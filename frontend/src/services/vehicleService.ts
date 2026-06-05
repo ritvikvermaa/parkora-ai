@@ -1,0 +1,53 @@
+import API from "./api";
+
+const getAuthHeaders = () => {
+  const token = localStorage.getItem("token");
+
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  };
+};
+
+export const getActiveVehicles = async () => {
+  const res = await fetch(
+    `${API}/api/vehicles/active`,
+    {
+      headers: getAuthHeaders(),
+    }
+  );
+
+  return await res.json();
+};
+
+export const vehicleEntry = async (data: any) => {
+  const res = await fetch(
+    `${API}/api/vehicles/entry`,
+    {
+      method: "POST",
+
+      headers: getAuthHeaders(),
+
+      body: JSON.stringify(data),
+    }
+  );
+
+  return await res.json();
+};
+
+export const vehicleExit = async (vehicleNumber: string) => {
+  const res = await fetch(
+    `${API}/api/vehicles/exit`,
+    {
+      method: "POST",
+
+      headers: getAuthHeaders(),
+
+      body: JSON.stringify({
+        vehicleNumber,
+      }),
+    }
+  );
+
+  return await res.json();
+};
