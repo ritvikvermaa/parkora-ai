@@ -10,7 +10,7 @@ const getAuthHeaders = () => {
 };
 
 export const getAvailableSlots = async () => {
-  const res = await fetch(`${API}/api/slots`, {
+  const res = await fetch(`${API}/api/slots/guard-available`, {
     headers: getAuthHeaders(),
   });
 

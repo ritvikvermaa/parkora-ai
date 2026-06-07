@@ -19,33 +19,22 @@ export const getResidentDashboard = async () => {
   return data.data;
 };
 
-export const inviteVisitor =
-async(data:any)=>{
+export const inviteVisitor = async (data: any) => {
+  const res = await fetch(`${API}/api/resident/invite-visitor`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
 
-const token=
-localStorage.getItem("token");
+  return await res.json();
+};
 
-const res=
-await fetch(
-`${API}/api/resident/invite-visitor`,
-{
+export const addResidentVehicle = async (data: any) => {
+  const res = await fetch(`${API}/api/vehicles/resident/add`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
 
-method:"POST",
-
-headers:{
-
-"Content-Type":"application/json",
-
-Authorization:`Bearer ${token}`
-
-},
-
-body:JSON.stringify(data)
-
-}
-
-)
-
-return await res.json()
-
-}
+  return await res.json();
+};

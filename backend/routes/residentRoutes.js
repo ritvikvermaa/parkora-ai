@@ -58,91 +58,150 @@ router.get(
   }
 );
 
+// Invite visitor
 router.post(
   "/invite-visitor",
   authMiddleware,
   roleMiddleware("resident", "admin"),
   async (req, res) => {
     try {
+      const { visitorName, phone, vehicleNumber, purpose } = req.body;
 
-      const {
+      const resident = await User.findById(req.user.id);
+
+      const slot = await ParkingSlot.findOne({
+        type: "visitor",
+        status: "available",
+        isActive: true,
+      });
+
+      if (!slot) {
+        return res.status(400).json({
+          success: false,
+          message: "No visitor slots available",
+        });
+      }
+
+      const visitor = await Visitor.create({
         visitorName,
         phone,
         vehicleNumber,
-        purpose
-      } = req.body;
-
-      const resident =
-        await User.findById(req.user.id);
-
-      const slot =
-        await ParkingSlot.findOne({
-
-          type: "visitor",
-
-          status: "available"
-
-        });
-
-      if (!slot) {
-
-        return res.status(400).json({
-
-          success: false,
-
-          message: "No visitor slots available"
-
-        });
-
-      }
-
-      const visitor =
-        await Visitor.create({
-
-          visitorName,
-
-          phone,
-
-          vehicleNumber,
-
-          purpose,
-
-          hostResident: resident.name,
-
-          slot: slot._id,
-
-          status: "pending"
-
-        });
+        purpose,
+        hostResident: resident.name,
+        slot: slot._id,
+        status: "pending",
+      });
 
       slot.status = "reserved";
-
       slot.assignedTo = visitorName;
 
       await slot.save();
 
       res.status(201).json({
-
         success: true,
-
         message: "Visitor request sent",
-
         visitor,
-
-        allottedSlot: slot
-
+        allottedSlot: slot,
       });
-
     } catch (error) {
-
       res.status(500).json({
-
         success: false,
+        message: error.message,
+      });
+    }
+  }
+);
 
-        message: error.message
+// Add resident vehicle with automatic slot allocation
+router.post(
+  "/add-vehicle",
+  authMiddleware,
+  roleMiddleware("resident", "admin"),
+  async (req, res) => {
+    try {
+      const { manufacturer, model, vehicleType, vehicleNumber, flat } = req.body;
 
+      if (!manufacturer || !model || !vehicleType || !vehicleNumber || !flat) {
+        return res.status(400).json({
+          success: false,
+          message: "All vehicle fields are required",
+        });
+      }
+
+      const resident = await User.findById(req.user.id);
+
+      const existingVehicle = await Vehicle.findOne({
+        vehicleNumber: vehicleNumber.toUpperCase(),
       });
 
+      if (existingVehicle) {
+        return res.status(400).json({
+          success: false,
+          message: "Vehicle already exists",
+        });
+      }
+
+      let slot = await ParkingSlot.findOne({
+        reservedForFlat: flat,
+        isReservedForFlat: true,
+        status: "available",
+        isActive: true,
+      });
+
+      if (!slot) {
+        slot = await ParkingSlot.findOne({
+          type: "visitor",
+          status: "available",
+          isActive: true,
+        });
+      }
+
+      if (!slot) {
+        slot = await ParkingSlot.findOne({
+          type: "resident",
+          status: "available",
+          isReservedForFlat: false,
+          isActive: true,
+        });
+      }
+
+      if (!slot) {
+        return res.status(400).json({
+          success: false,
+          message: "No parking slot available",
+        });
+      }
+
+      const vehicle = await Vehicle.create({
+        manufacturer,
+        model,
+        vehicleType,
+        vehicleNumber: vehicleNumber.toUpperCase(),
+        flat,
+        ownerName: resident.name,
+        owner: resident._id,
+        slot: slot._id,
+        entryTime: new Date(),
+        exitTime: null,
+      });
+
+      slot.status = "occupied";
+      slot.assignedTo = resident.name;
+
+      await slot.save();
+
+      res.status(201).json({
+        success: true,
+        message: "Vehicle added successfully",
+        vehicle,
+        allocatedSlot: slot,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Error adding resident vehicle",
+        error: error.message,
+      });
     }
   }
 );

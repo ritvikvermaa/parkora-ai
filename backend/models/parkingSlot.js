@@ -7,31 +7,74 @@ const parkingSlotSchema = new mongoose.Schema(
       required: true,
       unique: true,
     },
+
+    block: {
+      type: String,
+      enum: ["Jade", "Topaz", "Nest", "Opal"],
+      required: true,
+    },
+
+    blockCode: {
+      type: String,
+      enum: ["J", "T", "N", "O"],
+      required: true,
+    },
+
+    tower: {
+      type: String,
+      required: true,
+    },
+
+    flat: {
+      type: String,
+      default: null,
+    },
+
+    floor: {
+      type: String,
+      required: true,
+    },
+
     type: {
       type: String,
-      enum: ["resident", "visitor", "reserved"],
-      default: "resident",
+      enum: ["resident", "visitor"],
+      required: true,
     },
+
     status: {
       type: String,
       enum: ["available", "occupied", "reserved"],
       default: "available",
     },
-    tower: {
-      type: String,
-      default: "A",
+
+    isReservedForFlat: {
+      type: Boolean,
+      default: false,
     },
-    floor: {
+
+    reservedForFlat: {
       type: String,
-      default: "Ground",
+      default: null,
     },
+
     assignedTo: {
       type: String,
       default: null,
+    },
+
+    allowVisitorFallback: {
+      type: Boolean,
+      default: true,
+    },
+
+    isActive: {
+      type: Boolean,
+      default: true,
     },
   },
   { timestamps: true }
 );
 
 module.exports =
-  mongoose.models.ParkingSlot || mongoose.model("ParkingSlot", parkingSlotSchema);
+  mongoose.models.ParkingSlot ||
+  mongoose.model("ParkingSlot", parkingSlotSchema);

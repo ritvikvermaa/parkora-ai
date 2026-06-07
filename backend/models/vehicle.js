@@ -1,21 +1,37 @@
 const mongoose = require("mongoose");
 
-const vehicleSchema = new mongoose.Schema(
-{
-    ownerName:{
+const vehicleSchema = new mongoose.Schema({
+
+    number:{
+        type:String,
+        required:true,
+        unique:true
+    },
+
+    manufacturer:{
         type:String,
         required:true
     },
 
-    vehicleNumber:{
+    model:{
         type:String,
         required:true
     },
 
-    vehicleType:{
+    type:{
         type:String,
-        enum:["car","bike","visitor"],
-        default:"car"
+        enum:["car","bike","ev","other"],
+        required:true
+    },
+
+    flat:{
+        type:String,
+        required:true
+    },
+
+    owner:{
+        type:mongoose.Schema.Types.ObjectId,
+        ref:"User"
     },
 
     slot:{
@@ -23,24 +39,14 @@ const vehicleSchema = new mongoose.Schema(
         ref:"ParkingSlot"
     },
 
-    entryTime:{
-        type:Date,
-        default:Date.now
-    },
-
-    exitTime:{
-        type:Date,
-        default:null
-    },
-
     isParked:{
         type:Boolean,
-        default:true
+        default:false
     }
 
-},
-{timestamps:true}
-)
+},{
+    timestamps:true
+})
 
 module.exports =
   mongoose.models.Vehicle || mongoose.model("Vehicle", vehicleSchema);

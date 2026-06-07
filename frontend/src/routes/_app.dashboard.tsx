@@ -34,6 +34,8 @@ import {
   inviteVisitor,
 } from "@/services/residentService";
 
+import { addResidentVehicle } from "@/services/vehicleService";
+
 export const Route = createFileRoute("/_app/dashboard")({
   head: () => ({
     meta: [{ title: "Resident Dashboard — Parkora AI" }],
@@ -50,12 +52,21 @@ function ResidentDashboard() {
   const [data, setData] = useState<any>(null);
 
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [vehicleOpen, setVehicleOpen] = useState(false);
 
   const [visitorForm, setVisitorForm] = useState({
     visitorName: "",
     phone: "",
     vehicleNumber: "",
     purpose: "Guest Visit",
+  });
+
+  const [vehicleForm, setVehicleForm] = useState({
+    vehicleNumber: "",
+    vehicleType: "car",
+    manufacturer: "",
+    model: "",
+    flat: "",
   });
 
   useEffect(() => {
@@ -66,6 +77,11 @@ function ResidentDashboard() {
     const dashboard = await getResidentDashboard();
     setData(dashboard);
   };
+
+  const user = data?.user;
+  const vehicles = data?.vehicles || [];
+  const visitors = data?.visitors || [];
+  const slots = data?.assignedSlots || [];
 
   const submitVisitor = async () => {
     const data = await inviteVisitor(visitorForm);
@@ -88,10 +104,33 @@ function ResidentDashboard() {
     }
   };
 
-  const user = data?.user;
-  const vehicles = data?.vehicles || [];
-  const visitors = data?.visitors || [];
-  const slots = data?.assignedSlots || [];
+  const submitVehicle = async () => {
+    const payload = {
+      ...vehicleForm,
+      ownerName: user?.name || "",
+      flat: user?.flat || vehicleForm.flat,
+    };
+
+    const res = await addResidentVehicle(payload);
+
+    if (res.success) {
+      alert(`Vehicle Added Successfully\nSlot: ${res.slot?.slotNumber || "N/A"}`);
+
+      setVehicleOpen(false);
+
+      setVehicleForm({
+        vehicleNumber: "",
+        vehicleType: "car",
+        manufacturer: "",
+        model: "",
+        flat: "",
+      });
+
+      loadDashboard();
+    } else {
+      alert(res.message || "Failed to add vehicle");
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -99,10 +138,17 @@ function ResidentDashboard() {
         title={`Welcome back, ${user?.name?.split(" ")[0] || ""} 👋`}
         description="Resident Dashboard"
         actions={
-          <Button onClick={() => setInviteOpen(true)}>
-            <Plus className="h-4 w-4 mr-1" />
-            Invite Visitor
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setVehicleOpen(true)}>
+              <Plus className="h-4 w-4 mr-1" />
+              Add Vehicle
+            </Button>
+
+            <Button onClick={() => setInviteOpen(true)}>
+              <Plus className="h-4 w-4 mr-1" />
+              Invite Visitor
+            </Button>
+          </div>
         }
       />
 
@@ -149,10 +195,11 @@ function ResidentDashboard() {
                     <div className="flex justify-between">
                       <div>
                         <div className="font-semibold capitalize">
-                          {v.vehicleType}
+                          {v.manufacturer} {v.model}
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          {v.vehicleNumber}
+
+                        <div className="text-xs text-muted-foreground capitalize">
+                          {v.vehicleType}
                         </div>
                       </div>
 
@@ -165,6 +212,10 @@ function ResidentDashboard() {
                       <div className="text-xs flex gap-1 mt-1 text-muted-foreground">
                         <MapPin className="h-3 w-3" />
                         Slot {v.slot?.slotNumber || "N/A"}
+                      </div>
+
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Flat {v.flat || "N/A"}
                       </div>
                     </div>
                   </div>
@@ -180,7 +231,9 @@ function ResidentDashboard() {
               ) : (
                 visitors.map((v: any) => (
                   <div key={v._id} className="rounded-lg border p-3">
-                    <div className="font-medium">{v.visitorName || "Visitor"}</div>
+                    <div className="font-medium">
+                      {v.visitorName || "Visitor"}
+                    </div>
 
                     <div className="text-xs text-muted-foreground">
                       Vehicle: {v.vehicleNumber}
@@ -211,6 +264,10 @@ function ResidentDashboard() {
 
               <div className="mt-2 text-sm text-muted-foreground">
                 {user?.email}
+              </div>
+
+              <div className="mt-2 text-sm text-muted-foreground">
+                Flat: {user?.flat || "Not assigned"}
               </div>
 
               <div className="mt-6">
@@ -247,6 +304,13 @@ function ResidentDashboard() {
             title="Invite Visitor"
             desc="Create visitor pass"
             onClick={() => setInviteOpen(true)}
+          />
+
+          <QuickAction
+            icon={Car}
+            title="Add Vehicle"
+            desc="Register vehicle"
+            onClick={() => setVehicleOpen(true)}
           />
 
           <QuickAction
@@ -318,17 +382,92 @@ function ResidentDashboard() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={vehicleOpen} onOpenChange={setVehicleOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Vehicle</DialogTitle>
+            <DialogDescription>
+              Owner name and flat number will be picked automatically from your
+              resident profile.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <Input value={user?.name || ""} disabled />
+
+            <Input
+              placeholder="Vehicle Number"
+              value={vehicleForm.vehicleNumber}
+              onChange={(e) =>
+                setVehicleForm({
+                  ...vehicleForm,
+                  vehicleNumber: e.target.value,
+                })
+              }
+            />
+
+            <Input
+              placeholder="Manufacturer"
+              value={vehicleForm.manufacturer}
+              onChange={(e) =>
+                setVehicleForm({
+                  ...vehicleForm,
+                  manufacturer: e.target.value,
+                })
+              }
+            />
+
+            <Input
+              placeholder="Model"
+              value={vehicleForm.model}
+              onChange={(e) =>
+                setVehicleForm({
+                  ...vehicleForm,
+                  model: e.target.value,
+                })
+              }
+            />
+
+            <select
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              value={vehicleForm.vehicleType}
+              onChange={(e) =>
+                setVehicleForm({
+                  ...vehicleForm,
+                  vehicleType: e.target.value,
+                })
+              }
+            >
+              <option value="car">Car</option>
+              <option value="bike">Bike</option>
+              <option value="ev">EV</option>
+              <option value="other">Other</option>
+            </select>
+
+            <Input
+              placeholder="Flat Number"
+              value={user?.flat || vehicleForm.flat}
+              disabled={!!user?.flat}
+              onChange={(e) =>
+                setVehicleForm({
+                  ...vehicleForm,
+                  flat: e.target.value,
+                })
+              }
+            />
+
+            <Button className="w-full" onClick={submitVehicle}>
+              Add Vehicle
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-function QuickAction({
-  icon: Icon,
-  title,
-  desc,
-  to,
-  onClick,
-}: any) {
+function QuickAction({ icon: Icon, title, desc, to, onClick }: any) {
   if (onClick) {
     return (
       <button

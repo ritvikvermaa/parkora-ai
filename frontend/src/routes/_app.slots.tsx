@@ -25,11 +25,17 @@ type SlotStatus = "available" | "occupied" | "reserved" | "visitor";
 type ParkingSlot = {
   _id: string;
   slotNumber: string;
-  type: "resident" | "visitor" | "reserved";
-  status: "available" | "occupied" | "reserved";
+  block: "Jade" | "Topaz" | "Nest" | "Opal";
+  blockCode: "J" | "T" | "N" | "O";
   tower: string;
+  flat?: string | null;
   floor: string;
+  type: "resident" | "visitor";
+  status: "available" | "occupied" | "reserved";
+  isReservedForFlat?: boolean;
+  reservedForFlat?: string | null;
   assignedTo?: string | null;
+  allowVisitorFallback?: boolean;
 };
 
 export const Route = createFileRoute("/_app/slots")({
@@ -73,11 +79,16 @@ function SlotsPage() {
 
   const [form, setForm] = useState({
     slotNumber: "",
+    block: "Jade",
+    tower: "112",
+    flat: "",
+    floor: "1",
     type: "resident",
     status: "available",
-    tower: "",
-    floor: "",
+    isReservedForFlat: false,
+    reservedForFlat: "",
     assignedTo: "",
+    allowVisitorFallback: true,
   });
 
   const loadSlots = async () => {
@@ -99,6 +110,10 @@ function SlotsPage() {
 
     const data = await addSlot({
       ...form,
+      flat: form.flat || null,
+      reservedForFlat: form.isReservedForFlat
+        ? form.reservedForFlat || form.flat
+        : null,
       assignedTo: form.assignedTo || null,
     });
 
@@ -107,11 +122,16 @@ function SlotsPage() {
       setOpenAdd(false);
       setForm({
         slotNumber: "",
+        block: "Jade",
+        tower: "112",
+        flat: "",
+        floor: "1",
         type: "resident",
         status: "available",
-        tower: "",
-        floor: "",
+        isReservedForFlat: false,
+        reservedForFlat: "",
         assignedTo: "",
+        allowVisitorFallback: true,
       });
       await loadSlots();
     } else {
@@ -125,17 +145,17 @@ function SlotsPage() {
       return;
     }
 
-    const confirmDelete = confirm("Delete this slot?");
+    const confirmDelete = confirm("Remove this slot?");
     if (!confirmDelete) return;
 
     const data = await deleteSlot(id);
 
     if (data.success) {
-      setMessage("Slot deleted successfully");
+      setMessage("Slot removed successfully");
       setActive(null);
       await loadSlots();
     } else {
-      setMessage(data.message || "Failed to delete slot");
+      setMessage(data.message || "Failed to remove slot");
     }
   };
 
@@ -144,20 +164,27 @@ function SlotsPage() {
 
     if (filter !== "all" && displayStatus !== filter) return false;
 
-    if (query && !s.slotNumber.toLowerCase().includes(query.toLowerCase())) {
+    if (
+      query &&
+      !`${s.slotNumber} ${s.block} ${s.tower} ${s.flat || ""} ${s.reservedForFlat || ""}`
+        .toLowerCase()
+        .includes(query.toLowerCase())
+    ) {
       return false;
     }
 
     return true;
   });
 
-  const blocks = Array.from(new Set(slots.map((s) => s.tower)));
+  const groups = Array.from(
+    new Set(slots.map((s) => `${s.block} · Tower ${s.tower}`))
+  );
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Parking Slots"
-        description="Live status across all blocks"
+        description="Manage society slots by block, tower and flat"
         actions={
           isAdmin ? (
             <Button onClick={() => setOpenAdd(true)}>
@@ -174,14 +201,17 @@ function SlotsPage() {
         </div>
       )}
 
-      <SectionCard title="Filters" description={`${slots.length} of ${parkingSlots.length} slots`}>
+      <SectionCard
+        title="Filters"
+        description={`${slots.length} of ${parkingSlots.length} slots`}
+      >
         <div className="flex flex-col md:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by slot ID e.g. A-101"
+              placeholder="Search slot, block, tower, flat e.g. J-112C"
               className="pl-9"
             />
           </div>
@@ -211,7 +241,7 @@ function SlotsPage() {
       </SectionCard>
 
       <div className="space-y-6">
-        {blocks.length === 0 ? (
+        {groups.length === 0 ? (
           <SectionCard title="No Slots Found">
             <p className="text-sm text-muted-foreground">
               {isAdmin
@@ -220,15 +250,15 @@ function SlotsPage() {
             </p>
           </SectionCard>
         ) : (
-          blocks.map((b) => (
+          groups.map((group) => (
             <SectionCard
-              key={b}
-              title={`Block ${b}`}
-              description={`${slots.filter((s) => s.tower === b).length} slots shown`}
+              key={group}
+              title={group}
+              description={`${slots.filter((s) => `${s.block} · Tower ${s.tower}` === group).length} slots shown`}
             >
               <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-9 lg:grid-cols-12 gap-2">
                 {slots
-                  .filter((s) => s.tower === b)
+                  .filter((s) => `${s.block} · Tower ${s.tower}` === group)
                   .map((s) => {
                     const displayStatus = getDisplayStatus(s);
 
@@ -243,7 +273,9 @@ function SlotsPage() {
                         title={`${s.slotNumber} · ${displayStatus}`}
                       >
                         <span>{s.slotNumber}</span>
-                        <span className="text-[9px] opacity-70">{s.type}</span>
+                        <span className="text-[9px] opacity-70">
+                          {s.flat || s.type}
+                        </span>
                       </button>
                     );
                   })}
@@ -262,22 +294,41 @@ function SlotsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add Parking Slot</DialogTitle>
-            <DialogDescription>Create a new parking slot in MongoDB.</DialogDescription>
+            <DialogDescription>
+              Create resident or visitor parking using block, tower and flat mapping.
+            </DialogDescription>
           </DialogHeader>
 
           <form className="space-y-3" onSubmit={handleAddSlot}>
             <Input
-              placeholder="Slot Number e.g. A-101"
+              placeholder="Slot Number e.g. J-112C-P1"
               value={form.slotNumber}
               onChange={(e) => setForm({ ...form, slotNumber: e.target.value })}
               required
             />
 
+            <select
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              value={form.block}
+              onChange={(e) => setForm({ ...form, block: e.target.value })}
+            >
+              <option value="Jade">Jade</option>
+              <option value="Topaz">Topaz</option>
+              <option value="Nest">Nest</option>
+              <option value="Opal">Opal</option>
+            </select>
+
             <Input
-              placeholder="Tower e.g. A"
+              placeholder="Tower e.g. 112"
               value={form.tower}
               onChange={(e) => setForm({ ...form, tower: e.target.value })}
               required
+            />
+
+            <Input
+              placeholder="Flat e.g. 112C"
+              value={form.flat}
+              onChange={(e) => setForm({ ...form, flat: e.target.value })}
             />
 
             <Input
@@ -292,9 +343,8 @@ function SlotsPage() {
               value={form.type}
               onChange={(e) => setForm({ ...form, type: e.target.value })}
             >
-              <option value="resident">Resident</option>
-              <option value="visitor">Visitor</option>
-              <option value="reserved">Reserved</option>
+              <option value="resident">Resident Parking</option>
+              <option value="visitor">Visitor Parking</option>
             </select>
 
             <select
@@ -306,6 +356,45 @@ function SlotsPage() {
               <option value="occupied">Occupied</option>
               <option value="reserved">Reserved</option>
             </select>
+
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.isReservedForFlat}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    isReservedForFlat: e.target.checked,
+                    reservedForFlat: e.target.checked ? form.flat : "",
+                  })
+                }
+              />
+              Reserve this parking for a flat
+            </label>
+
+            {form.isReservedForFlat && (
+              <Input
+                placeholder="Reserved For Flat e.g. 112C"
+                value={form.reservedForFlat}
+                onChange={(e) =>
+                  setForm({ ...form, reservedForFlat: e.target.value })
+                }
+              />
+            )}
+
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.allowVisitorFallback}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    allowVisitorFallback: e.target.checked,
+                  })
+                }
+              />
+              Allow visitor fallback if visitor parking is full
+            </label>
 
             <Input
               placeholder="Assigned To optional"
@@ -332,22 +421,31 @@ function SlotsPage() {
                   </Badge>
                 </DialogTitle>
                 <DialogDescription>
-                  Block {active.tower} · Floor {active.floor}
+                  {active.block} · Tower {active.tower} · Floor {active.floor}
                 </DialogDescription>
               </DialogHeader>
 
               <div className="space-y-3 text-sm">
                 <Row label="Status" value={getDisplayStatus(active)} />
-                <Row label="Assigned To" value={active.assignedTo ?? "—"} mono />
                 <Row label="Type" value={active.type} />
-                <Row label="Block" value={active.tower} />
-                <Row label="Floor" value={active.floor} />
+                <Row label="Block" value={active.block} />
+                <Row label="Tower" value={active.tower} />
+                <Row label="Flat" value={active.flat ?? "—"} />
+                <Row label="Reserved For" value={active.reservedForFlat ?? "—"} />
+                <Row label="Assigned To" value={active.assignedTo ?? "—"} mono />
+                <Row
+                  label="Visitor Fallback"
+                  value={active.allowVisitorFallback ? "Allowed" : "Not allowed"}
+                />
               </div>
 
               {isAdmin && (
-                <Button variant="destructive" onClick={() => handleDeleteSlot(active._id)}>
+                <Button
+                  variant="destructive"
+                  onClick={() => handleDeleteSlot(active._id)}
+                >
                   <Trash2 className="h-4 w-4 mr-1" />
-                  Delete Slot
+                  Remove Slot
                 </Button>
               )}
             </>
