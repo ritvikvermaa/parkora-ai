@@ -7,8 +7,7 @@ import {
   Search,
   Car,
   Clock,
-  UserCheck,
-  UserX,
+  Send,
 } from "lucide-react";
 
 import { PageHeader, SectionCard } from "@/components/section";
@@ -41,12 +40,6 @@ import {
 
 import { getAvailableSlots } from "@/services/slotService";
 
-import {
-  getPendingVisitors,
-  approveVisitor,
-  rejectVisitor,
-} from "@/services/visitorService";
-
 import ProtectedRoute from "../components/ProtectedRoute";
 
 export const Route = createFileRoute("/_app/guard")({
@@ -65,14 +58,16 @@ function GuardDashboard() {
   const [query, setQuery] = useState("");
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [availableSlots, setAvailableSlots] = useState<any[]>([]);
-  const [pendingVisitors, setPendingVisitors] = useState<any[]>([]);
   const [message, setMessage] = useState("");
 
   const [entry, setEntry] = useState({
     ownerName: "",
+    phone: "",
     vehicleNumber: "",
     vehicleType: "car",
-    slotId: "",
+    block: "Jade",
+    flat: "",
+    purpose: "Guest Visit",
   });
 
   const [exitPlate, setExitPlate] = useState("");
@@ -87,15 +82,9 @@ function GuardDashboard() {
     setAvailableSlots(slots || []);
   };
 
-  const loadPendingVisitors = async () => {
-    const data = await getPendingVisitors();
-    setPendingVisitors(data.visitors || []);
-  };
-
   const loadAll = async () => {
     await loadVehicles();
     await loadAvailableSlots();
-    await loadPendingVisitors();
   };
 
   useEffect(() => {
@@ -105,7 +94,17 @@ function GuardDashboard() {
   const filteredActive = vehicles.filter(
     (v) =>
       v.vehicleNumber?.toLowerCase().includes(query.toLowerCase()) ||
+      v.number?.toLowerCase().includes(query.toLowerCase()) ||
       v.ownerName?.toLowerCase().includes(query.toLowerCase())
+  );
+  const getVehicleCategory = (vehicle: any) =>
+    vehicle.parkingCategory ||
+    (vehicle.manufacturer === "Visitor" ? "visitor" : "resident");
+  const visitorVehicles = vehicles.filter(
+    (vehicle) => getVehicleCategory(vehicle) === "visitor"
+  );
+  const residentVehicles = vehicles.filter(
+    (vehicle) => getVehicleCategory(vehicle) === "resident"
   );
 
   const handleEntry = async (e: React.FormEvent) => {
@@ -114,13 +113,16 @@ function GuardDashboard() {
     const data = await vehicleEntry(entry);
 
     if (data.success) {
-      setMessage("Vehicle entry recorded successfully");
+      setMessage("Entry request sent to the resident for approval");
 
       setEntry({
         ownerName: "",
+        phone: "",
         vehicleNumber: "",
         vehicleType: "car",
-        slotId: "",
+        block: "Jade",
+        flat: "",
+        purpose: "Guest Visit",
       });
 
       await loadAll();
@@ -155,33 +157,11 @@ function GuardDashboard() {
     }
   };
 
-  const handleApproveVisitor = async (id: string) => {
-    const data = await approveVisitor(id);
-
-    if (data.success) {
-      setMessage("Visitor approved and entry time started");
-      await loadAll();
-    } else {
-      setMessage(data.message || "Visitor approval failed");
-    }
-  };
-
-  const handleRejectVisitor = async (id: string) => {
-    const data = await rejectVisitor(id);
-
-    if (data.success) {
-      setMessage("Visitor rejected and slot released");
-      await loadAll();
-    } else {
-      setMessage(data.message || "Visitor rejection failed");
-    }
-  };
-
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Guard Console"
-        description="Log entries, exits, approve visitors, and search vehicles on duty."
+        title="Guard Dashboard"
+        description="Create flat-specific visitor entry requests and manage active exits."
       />
 
       {message && (
@@ -199,9 +179,9 @@ function GuardDashboard() {
         />
 
         <StatCard
-          label="Pending Visitors"
-          value={pendingVisitors.length}
-          icon={UserCheck}
+          label="Approval Flow"
+          value="Resident"
+          icon={Send}
           tone="warning"
         />
 
@@ -220,88 +200,28 @@ function GuardDashboard() {
         />
       </div>
 
-      <SectionCard
-        title="Incoming Visitor Requests"
-        description={`${pendingVisitors.length} pending requests`}
-      >
-        <div className="space-y-3">
-          {pendingVisitors.length === 0 ? (
-            <div className="text-sm text-muted-foreground">
-              No pending visitor requests
-            </div>
-          ) : (
-            pendingVisitors.map((visitor) => (
-              <div
-                key={visitor._id}
-                className="rounded-lg border p-4 hover:bg-muted/40 transition-colors"
-              >
-                <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-                  <div>
-                    <div className="font-medium">{visitor.visitorName}</div>
-
-                    <div className="text-xs text-muted-foreground mt-1">
-                      Phone: {visitor.phone}
-                    </div>
-
-                    <div className="text-xs text-muted-foreground">
-                      Vehicle: {visitor.vehicleNumber}
-                    </div>
-
-                    <div className="text-xs text-muted-foreground">
-                      Resident: {visitor.hostResident}
-                    </div>
-
-                    <div className="text-xs text-muted-foreground">
-                      Purpose: {visitor.purpose || "Guest Visit"}
-                    </div>
-
-                    <div className="text-xs text-muted-foreground">
-                      Slot: {visitor.slot?.slotNumber || "N/A"}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col items-start md:items-end gap-2">
-                    <Badge variant="outline">Pending</Badge>
-
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        onClick={() => handleApproveVisitor(visitor._id)}
-                      >
-                        <UserCheck className="h-4 w-4 mr-1" />
-                        Approve
-                      </Button>
-
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleRejectVisitor(visitor._id)}
-                      >
-                        <UserX className="h-4 w-4 mr-1" />
-                        Reject
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </SectionCard>
-
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div id="entry-request" className="scroll-mt-24">
         <SectionCard
-          title="Vehicle Entry"
-          description="Log a new vehicle entering the premises"
+          title="Visitor Entry Request"
+          description="Specify the flat so the resident can approve entry"
         >
           <form className="space-y-3" onSubmit={handleEntry}>
             <Input
-              placeholder="Owner Name"
+              placeholder="Visitor Name"
               value={entry.ownerName}
               onChange={(e) =>
                 setEntry({ ...entry, ownerName: e.target.value })
               }
               required
+            />
+
+            <Input
+              placeholder="Phone"
+              value={entry.phone}
+              onChange={(e) =>
+                setEntry({ ...entry, phone: e.target.value })
+              }
             />
 
             <Input
@@ -314,42 +234,59 @@ function GuardDashboard() {
             />
 
             <Input
-              placeholder="Vehicle Type: car / bike / visitor"
-              value={entry.vehicleType}
+              placeholder="Flat format: tower + flat letter, such as 22A"
+              value={entry.flat}
               onChange={(e) =>
-                setEntry({ ...entry, vehicleType: e.target.value })
+                setEntry({ ...entry, flat: e.target.value.toUpperCase() })
               }
               required
             />
 
             <select
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              value={entry.slotId}
-              onChange={(e) =>
-                setEntry({ ...entry, slotId: e.target.value })
-              }
-              required
+              value={entry.block}
+              onChange={(e) => setEntry({ ...entry, block: e.target.value })}
             >
-              <option value="">Select Available Slot</option>
-
-              {availableSlots.map((slot) => (
-                <option key={slot._id} value={slot._id}>
-                  {slot.slotNumber} — Tower {slot.tower}, {slot.floor}
-                </option>
-              ))}
+              <option value="Jade">Jade (J)</option>
+              <option value="Topaz">Topaz (T)</option>
+              <option value="Nest">Nest (N)</option>
+              <option value="Opal">Opal (O)</option>
             </select>
 
+            <select
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              value={entry.vehicleType}
+              onChange={(e) =>
+                setEntry({ ...entry, vehicleType: e.target.value })
+              }
+            >
+              <option value="car">Car</option>
+              <option value="bike">Bike</option>
+              <option value="ev">EV</option>
+              <option value="other">Other</option>
+            </select>
+
+            <Input
+              placeholder="Purpose"
+              value={entry.purpose}
+              onChange={(e) =>
+                setEntry({ ...entry, purpose: e.target.value })
+              }
+            />
+
             <Button type="submit" className="w-full">
-              <LogIn className="h-4 w-4 mr-1" />
-              Log Entry
+              <Send className="h-4 w-4 mr-1" />
+              Send for Approval
             </Button>
           </form>
         </SectionCard>
+        </div>
 
-        <SectionCard title="Vehicle Exit" description="Mark a vehicle as exited">
+        <div id="visitor-exit" className="scroll-mt-24">
+        <SectionCard title="Visitor Exit" description="Guards can release visitor parking only">
           <form className="space-y-3" onSubmit={handleExit}>
             <Input
-              placeholder="Vehicle Number"
+              placeholder="Visitor Vehicle Number"
               value={exitPlate}
               onChange={(e) => setExitPlate(e.target.value)}
               required
@@ -358,7 +295,7 @@ function GuardDashboard() {
             <div className="rounded-lg bg-muted/50 p-3 text-xs space-y-1">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Action</span>
-                <span className="font-medium">Release assigned slot</span>
+                <span className="font-medium">Release visitor slot</span>
               </div>
 
               <div className="flex justify-between">
@@ -369,11 +306,13 @@ function GuardDashboard() {
 
             <Button type="submit" variant="outline" className="w-full">
               <LogOut className="h-4 w-4 mr-1" />
-              Log Exit
+              Log Visitor Exit
             </Button>
           </form>
         </SectionCard>
+        </div>
 
+        <div id="quick-search" className="scroll-mt-24">
         <SectionCard title="Quick Search" description="Find a vehicle by plate or owner">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -397,31 +336,33 @@ function GuardDashboard() {
                 >
                   <div className="flex items-center justify-between">
                     <div className="font-mono text-sm font-semibold">
-                      {v.vehicleNumber}
+                      {v.vehicleNumber || v.number}
                     </div>
 
-                    <Badge variant="secondary">{v.vehicleType}</Badge>
+                    <Badge variant="secondary">{v.vehicleType || v.type}</Badge>
                   </div>
 
                   <div className="text-xs text-muted-foreground mt-1">
-                    {v.ownerName} · Slot {v.slot?.slotNumber || "-"}
+                    {v.ownerName || "Visitor"} · Slot {v.slot?.slotNumber || "-"}
                   </div>
                 </div>
               ))
             )}
           </div>
         </SectionCard>
+        </div>
       </div>
 
       <Tabs defaultValue="active">
         <TabsList>
-          <TabsTrigger value="active">Active Parked</TabsTrigger>
+          <TabsTrigger value="visitors">Visitor Vehicles</TabsTrigger>
+          <TabsTrigger value="residents">Resident Vehicles</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="active" className="mt-4">
+        <TabsContent value="visitors" id="visitor-vehicles" className="mt-4 scroll-mt-24">
           <SectionCard
-            title="Active Parked Vehicles"
-            description={`${vehicles.length} vehicles currently parked`}
+            title="Active Visitor Vehicles"
+            description={`${visitorVehicles.length} visitor vehicles currently parked`}
           >
             <div className="overflow-x-auto">
               <Table>
@@ -437,18 +378,24 @@ function GuardDashboard() {
                 </TableHeader>
 
                 <TableBody>
-                  {vehicles.map((v) => (
+                  {visitorVehicles.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center text-muted-foreground">
+                        No visitor vehicles are currently parked
+                      </TableCell>
+                    </TableRow>
+                  ) : visitorVehicles.map((v) => (
                     <TableRow key={v._id}>
                       <TableCell className="font-mono font-medium">
-                        {v.vehicleNumber}
+                        {v.vehicleNumber || v.number}
                       </TableCell>
 
-                      <TableCell>{v.ownerName}</TableCell>
+                      <TableCell>{v.ownerName || "-"}</TableCell>
 
                       <TableCell>{v.slot?.slotNumber || "-"}</TableCell>
 
                       <TableCell>
-                        <Badge variant="outline">{v.vehicleType}</Badge>
+                        <Badge variant="outline">{v.vehicleType || v.type}</Badge>
                       </TableCell>
 
                       <TableCell className="text-muted-foreground">
@@ -461,13 +408,62 @@ function GuardDashboard() {
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() => handleQuickExit(v.vehicleNumber)}
+                          onClick={() => handleQuickExit(v.vehicleNumber || v.number)}
                         >
                           Mark Exit
                         </Button>
                       </TableCell>
                     </TableRow>
                   ))}
+                </TableBody>
+              </Table>
+            </div>
+          </SectionCard>
+        </TabsContent>
+
+        <TabsContent value="residents" id="resident-vehicles" className="mt-4 scroll-mt-24">
+          <SectionCard
+            title="Resident Vehicles"
+            description={`${residentVehicles.length} resident-owned vehicles currently parked`}
+          >
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Plate</TableHead>
+                    <TableHead>Owner</TableHead>
+                    <TableHead>Flat</TableHead>
+                    <TableHead>Slot</TableHead>
+                    <TableHead>Entry Time</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+
+                <TableBody>
+                  {residentVehicles.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center text-muted-foreground">
+                        No resident vehicles are currently parked
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    residentVehicles.map((v) => (
+                      <TableRow key={v._id}>
+                        <TableCell className="font-mono font-medium">
+                          {v.vehicleNumber || v.number}
+                        </TableCell>
+                        <TableCell>{v.ownerName || "-"}</TableCell>
+                        <TableCell>{v.flat || "-"}</TableCell>
+                        <TableCell>{v.slot?.slotNumber || "-"}</TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {v.entryTime ? new Date(v.entryTime).toLocaleString() : "-"}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">Resident managed</Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
               </Table>
             </div>

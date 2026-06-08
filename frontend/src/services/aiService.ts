@@ -5,6 +5,11 @@ export const getViolations = async () => {
   return await res.json();
 };
 
+export const getAiDashboard = async () => {
+  const res = await fetch(`${API}/api/ai/dashboard`);
+  return await res.json();
+};
+
 export const getRecommendation = async (tower:string,floor:string) => {
 
   const res = await fetch(

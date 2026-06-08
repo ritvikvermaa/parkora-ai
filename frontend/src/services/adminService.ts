@@ -41,3 +41,26 @@ export const getResidents = async () => {
 
   return data.residents || [];
 };
+
+export const getPendingUsers = async () => {
+  const res = await fetch(`${API}/api/admin/pending-users`, {
+    headers: getAuthHeaders(),
+  });
+
+  const data = await res.json();
+
+  return data.users || [];
+};
+
+export const updateUserApproval = async (
+  id: string,
+  approvalStatus: "approved" | "rejected"
+) => {
+  const res = await fetch(`${API}/api/admin/users/${id}/approval`, {
+    method: "PATCH",
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ approvalStatus }),
+  });
+
+  return await res.json();
+};

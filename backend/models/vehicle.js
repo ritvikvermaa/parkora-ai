@@ -2,10 +2,20 @@ const mongoose = require("mongoose");
 
 const vehicleSchema = new mongoose.Schema({
 
+    ownerName:{
+        type:String,
+        default:""
+    },
+
     number:{
         type:String,
         required:true,
         unique:true
+    },
+
+    vehicleNumber:{
+        type:String,
+        required:true
     },
 
     manufacturer:{
@@ -19,6 +29,12 @@ const vehicleSchema = new mongoose.Schema({
     },
 
     type:{
+        type:String,
+        enum:["car","bike","ev","other"],
+        required:true
+    },
+
+    vehicleType:{
         type:String,
         enum:["car","bike","ev","other"],
         required:true
@@ -42,6 +58,28 @@ const vehicleSchema = new mongoose.Schema({
     isParked:{
         type:Boolean,
         default:false
+    },
+
+    parkingCategory:{
+        type:String,
+        enum:["resident","visitor"],
+        default:"resident"
+    },
+
+    entrySource:{
+        type:String,
+        enum:["resident","visitor_invite","guard_request","admin"],
+        default:"resident"
+    },
+
+    entryTime:{
+        type:Date,
+        default:null
+    },
+
+    exitTime:{
+        type:Date,
+        default:null
     }
 
 },{

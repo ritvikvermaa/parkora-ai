@@ -5,15 +5,18 @@ import {
   Car,
   ParkingCircle,
   Users,
-  AlertTriangle,
   TrendingUp,
   MoreHorizontal,
+  UserCheck,
+  UserX,
+  ShieldCheck,
 } from "lucide-react";
 
 import { PageHeader, SectionCard } from "@/components/section";
 import { StatCard } from "@/components/stat-card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 
 import {
   Table,
@@ -44,6 +47,8 @@ import {
   getAdminStats,
   getRecentActivity,
   getResidents,
+  getPendingUsers,
+  updateUserApproval,
 } from "@/services/adminService";
 
 import { weeklyTraffic, slotMix } from "@/lib/dummy-data";
@@ -64,6 +69,7 @@ function AdminDashboard() {
   const [stats, setStats] = useState<any>(null);
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [residentsData, setResidentsData] = useState<any[]>([]);
+  const [pendingUsers, setPendingUsers] = useState<any[]>([]);
 
   useEffect(() => {
     loadStats();
@@ -73,10 +79,23 @@ function AdminDashboard() {
     const statsData = await getAdminStats();
     const activityData = await getRecentActivity();
     const residents = await getResidents();
+    const pending = await getPendingUsers();
 
     setStats(statsData);
     setRecentActivity(activityData);
     setResidentsData(residents);
+    setPendingUsers(pending);
+  };
+
+  const handleApproval = async (
+    id: string,
+    approvalStatus: "approved" | "rejected"
+  ) => {
+    const data = await updateUserApproval(id, approvalStatus);
+
+    if (data.success) {
+      await loadStats();
+    }
   };
 
   const occRate = stats?.totalSlots
@@ -102,8 +121,8 @@ function AdminDashboard() {
         />
 
         <StatCard
-          label="Visitors"
-          value={stats?.totalVisitors || 0}
+          label="Pending Users"
+          value={stats?.pendingUsers || 0}
           icon={Users}
           tone="info"
         />
@@ -116,7 +135,43 @@ function AdminDashboard() {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div id="operations" className="scroll-mt-24">
+      <SectionCard
+        title="Operations Health"
+        description="Live control-room signals for approvals, capacity and gate load"
+      >
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-medium">Slot Occupancy</span>
+              <span>{occRate}%</span>
+            </div>
+            <Progress value={occRate} />
+            <div className="text-xs text-muted-foreground">
+              {stats?.occupiedSlots || 0} occupied of {stats?.totalSlots || 0} total slots
+            </div>
+          </div>
+
+          <OpsSignal
+            icon={UserCheck}
+            label="Approvals"
+            value={pendingUsers.length}
+            desc={pendingUsers.length ? "Review resident requests" : "No pending user approvals"}
+            tone={pendingUsers.length ? "warning" : "success"}
+          />
+
+          <OpsSignal
+            icon={ShieldCheck}
+            label="Gate Load"
+            value={stats?.activeVehicles || 0}
+            desc="Active parked vehicles across resident and visitor traffic"
+            tone="info"
+          />
+        </div>
+      </SectionCard>
+      </div>
+
+      <div id="analytics" className="grid grid-cols-1 lg:grid-cols-3 gap-6 scroll-mt-24">
         <SectionCard
           title="Weekly Traffic"
           description="Entries vs exits"
@@ -171,7 +226,64 @@ function AdminDashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
+        <div id="approvals" className="lg:col-span-3 scroll-mt-24">
+          <SectionCard
+            title="Pending Registration Requests"
+            description={`${pendingUsers.length} users waiting for approval`}
+          >
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Flat</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+
+              <TableBody>
+                {pendingUsers.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-muted-foreground">
+                      No pending registration requests
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  pendingUsers.map((user) => (
+                    <TableRow key={user._id}>
+                      <TableCell className="font-medium">{user.name}</TableCell>
+                      <TableCell>{user.email}</TableCell>
+                      <TableCell className="capitalize">{user.role}</TableCell>
+                      <TableCell>{user.flat || "-"}</TableCell>
+                      <TableCell>
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => handleApproval(user._id, "approved")}
+                          >
+                            <UserCheck className="h-4 w-4 mr-1" />
+                            Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleApproval(user._id, "rejected")}
+                          >
+                            <UserX className="h-4 w-4 mr-1" />
+                            Reject
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </SectionCard>
+        </div>
+
+        <div id="residents" className="lg:col-span-2 scroll-mt-24">
           <SectionCard
             title="Residents"
             description={`${stats?.residents || 0} residents registered`}
@@ -183,19 +295,20 @@ function AdminDashboard() {
           >
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead></TableHead>
-                </TableRow>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Flat</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead></TableHead>
+                  </TableRow>
               </TableHeader>
 
               <TableBody>
                 {residentsData.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground">
+                    <TableCell colSpan={6} className="text-center text-muted-foreground">
                       No residents found
                     </TableCell>
                   </TableRow>
@@ -205,8 +318,9 @@ function AdminDashboard() {
                       <TableCell className="font-medium">{r.name}</TableCell>
                       <TableCell>{r.email}</TableCell>
                       <TableCell className="capitalize">{r.role}</TableCell>
+                      <TableCell>{formatFlat(r)}</TableCell>
                       <TableCell>
-                        <Badge>Active</Badge>
+                        <Badge>{r.approvalStatus || "approved"}</Badge>
                       </TableCell>
                       <TableCell>
                         <Button size="icon" variant="ghost">
@@ -221,6 +335,7 @@ function AdminDashboard() {
           </SectionCard>
         </div>
 
+        <div id="activity" className="scroll-mt-24">
         <SectionCard title="Recent Activity">
           <div className="space-y-3">
             {recentActivity.length === 0 ? (
@@ -259,6 +374,7 @@ function AdminDashboard() {
             )}
           </div>
         </SectionCard>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -270,19 +386,47 @@ function AdminDashboard() {
         />
 
         <AdminTile
-          title="Visitors"
-          desc={`${stats?.totalVisitors || 0} visitors`}
-          icon={Users}
-          to="/visitors"
+          title="AI Insights"
+          desc="Demand and usage patterns"
+          icon={TrendingUp}
+          to="/ai-insights"
         />
 
         <AdminTile
-          title="Guards"
-          desc={`${stats?.guards || 0} active guards`}
-          icon={AlertTriangle}
-          to="/guard"
-          tone="warning"
+          title="Settings"
+          desc="Society and profile"
+          icon={MoreHorizontal}
+          to="/settings"
         />
+      </div>
+    </div>
+  );
+}
+
+function formatFlat(resident: any) {
+  if (!resident.flat) return "-";
+  if (resident.flat.includes("-")) return resident.flat.replace("-", "");
+  return [resident.block, resident.flat].filter(Boolean).join(" ") || resident.flat;
+}
+
+function OpsSignal({ icon: Icon, label, value, desc, tone }: any) {
+  const toneMap: any = {
+    success: "bg-success/10 text-success border-success/20",
+    warning: "bg-warning/15 text-warning-foreground border-warning/30",
+    info: "bg-info/10 text-info border-info/20",
+  };
+
+  return (
+    <div className={`rounded-lg border p-4 ${toneMap[tone] || "bg-card"}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-xs uppercase text-muted-foreground">{label}</div>
+          <div className="mt-2 text-2xl font-semibold">{value}</div>
+          <div className="mt-1 text-xs text-muted-foreground">{desc}</div>
+        </div>
+        <div className="h-9 w-9 rounded-lg bg-background/70 grid place-items-center">
+          <Icon className="h-4 w-4" />
+        </div>
       </div>
     </div>
   );

@@ -4,6 +4,7 @@ const router = express.Router();
 const ParkingSlot = require("../models/parkingSlot");
 const Visitor = require("../models/visitor");
 const Vehicle = require("../models/vehicle");
+const { buildParkingPressure } = require("../../ml-service/parkingPressure");
 
 // AI Slot Recommendation
 router.post("/recommend-slot", async (req, res) => {
@@ -120,6 +121,50 @@ router.get("/violations", async (req, res) => {
       success: true,
       count: violations.length,
       violations,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+router.get("/dashboard", async (req, res) => {
+  try {
+    const [slots, vehicles, visitors] = await Promise.all([
+      ParkingSlot.find({ isActive: true }).lean(),
+      Vehicle.find().populate("slot", "slotNumber tower floor type").lean(),
+      Visitor.find().populate("slot", "slotNumber tower floor type").lean(),
+    ]);
+
+    const model = buildParkingPressure({ slots, vehicles, visitors });
+    const activeVehicles = vehicles.filter((vehicle) => vehicle.isParked);
+    const visitorVehicles = activeVehicles.filter(
+      (vehicle) =>
+        (vehicle.parkingCategory ||
+          (vehicle.manufacturer === "Visitor" ? "visitor" : "resident")) === "visitor"
+    );
+    const residentVehicles = activeVehicles.filter(
+      (vehicle) =>
+        (vehicle.parkingCategory ||
+          (vehicle.manufacturer === "Visitor" ? "visitor" : "resident")) === "resident"
+    );
+
+    res.json({
+      success: true,
+      model,
+      counts: {
+        slots: slots.length,
+        activeVehicles: activeVehicles.length,
+        visitorVehicles: visitorVehicles.length,
+        residentVehicles: residentVehicles.length,
+        visitors: visitors.length,
+        pendingVisitors: visitors.filter((visitor) => visitor.status === "pending").length,
+        parkingUnavailable: visitors.filter(
+          (visitor) => visitor.status === "parking_unavailable"
+        ).length,
+      },
     });
   } catch (error) {
     res.status(500).json({

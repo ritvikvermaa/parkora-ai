@@ -8,6 +8,13 @@ const ParkingSlot = require("../models/parkingSlot");
 
 const authMiddleware = require("../middleware/authMiddleware");
 const roleMiddleware = require("../middleware/roleMiddleware");
+const {
+  normalizeFlat,
+  normalizeVehicleNumber,
+  findVisitorOrUnhandoverResidentSlot,
+  flatAliases,
+} = require("../utils/parkingAllocator");
+const { canonicalFlat } = require("../utils/society");
 
 // Resident dashboard data
 router.get(
@@ -16,23 +23,32 @@ router.get(
   roleMiddleware("resident", "admin"),
   async (req, res) => {
     try {
-      const user = await User.findById(req.user.id).select("-password");
+      const userDoc = await User.findById(req.user.id).select("-password");
+      const user = userDoc.toObject();
+      user.flat = canonicalFlat(user.flat, user.block);
 
       const vehicles = await Vehicle.find({
-        ownerName: user.name,
+        $or: [{ owner: user._id }, { flat: { $in: flatAliases(user.flat, user.block) } }],
       }).populate("slot", "slotNumber tower floor type status");
 
       const activeVehicles = await Vehicle.countDocuments({
-        ownerName: user.name,
-        exitTime: null,
+        $or: [{ owner: user._id }, { flat: { $in: flatAliases(user.flat, user.block) } }],
+        isParked: true,
       });
 
       const assignedSlots = await ParkingSlot.find({
-        assignedTo: { $regex: user.name, $options: "i" },
+        $or: [
+          { assignedTo: { $regex: user.name, $options: "i" } },
+          { reservedForFlat: { $in: flatAliases(user.flat, user.block) } },
+          { flat: { $in: flatAliases(user.flat, user.block) } },
+        ],
       });
 
       const visitors = await Visitor.find({
-        hostResident: { $regex: user.name, $options: "i" },
+        $or: [
+          { hostResident: { $regex: user.name, $options: "i" } },
+          { hostFlat: { $in: flatAliases(user.flat, user.block) } },
+        ],
       })
         .populate("slot", "slotNumber tower floor")
         .sort({ createdAt: -1 })
@@ -69,37 +85,59 @@ router.post(
 
       const resident = await User.findById(req.user.id);
 
-      const slot = await ParkingSlot.findOne({
-        type: "visitor",
-        status: "available",
-        isActive: true,
-      });
+      const slot = await findVisitorOrUnhandoverResidentSlot(resident.flat);
 
       if (!slot) {
         return res.status(400).json({
           success: false,
-          message: "No visitor slots available",
+          message: "No visitor parking or fallback resident parking available",
         });
       }
+
+      const normalizedVehicleNumber = normalizeVehicleNumber(vehicleNumber);
 
       const visitor = await Visitor.create({
         visitorName,
         phone,
-        vehicleNumber,
+        vehicleNumber: normalizedVehicleNumber,
         purpose,
         hostResident: resident.name,
+        hostFlat: normalizeFlat(resident.flat),
         slot: slot._id,
-        status: "pending",
+        createdByRole: "resident",
+        status: "approved",
+        entryTime: new Date(),
       });
 
-      slot.status = "reserved";
-      slot.assignedTo = visitorName;
+      slot.status = "occupied";
+      slot.assignedTo = normalizedVehicleNumber;
 
       await slot.save();
 
+      await Vehicle.findOneAndUpdate(
+        { number: normalizedVehicleNumber },
+        {
+          ownerName: visitorName,
+          number: normalizedVehicleNumber,
+          vehicleNumber: normalizedVehicleNumber,
+          manufacturer: "Visitor",
+          model: "Vehicle",
+          vehicleType: "car",
+          type: "car",
+          flat: normalizeFlat(resident.flat),
+          slot: slot._id,
+          isParked: true,
+          parkingCategory: "visitor",
+          entrySource: "visitor_invite",
+          entryTime: new Date(),
+          exitTime: null,
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+
       res.status(201).json({
         success: true,
-        message: "Visitor request sent",
+        message: "Visitor approved and parking allocated",
         visitor,
         allottedSlot: slot,
       });
@@ -130,8 +168,11 @@ router.post(
 
       const resident = await User.findById(req.user.id);
 
+      const normalizedVehicleNumber = normalizeVehicleNumber(vehicleNumber);
+      const normalizedFlat = normalizeFlat(flat);
+
       const existingVehicle = await Vehicle.findOne({
-        vehicleNumber: vehicleNumber.toUpperCase(),
+        number: normalizedVehicleNumber,
       });
 
       if (existingVehicle) {
@@ -141,29 +182,9 @@ router.post(
         });
       }
 
-      let slot = await ParkingSlot.findOne({
-        reservedForFlat: flat,
-        isReservedForFlat: true,
-        status: "available",
-        isActive: true,
-      });
-
-      if (!slot) {
-        slot = await ParkingSlot.findOne({
-          type: "visitor",
-          status: "available",
-          isActive: true,
-        });
-      }
-
-      if (!slot) {
-        slot = await ParkingSlot.findOne({
-          type: "resident",
-          status: "available",
-          isReservedForFlat: false,
-          isActive: true,
-        });
-      }
+      let slot = await require("../utils/parkingAllocator").findResidentVehicleSlot(
+        normalizedFlat
+      );
 
       if (!slot) {
         return res.status(400).json({
@@ -176,17 +197,22 @@ router.post(
         manufacturer,
         model,
         vehicleType,
-        vehicleNumber: vehicleNumber.toUpperCase(),
-        flat,
+        type: vehicleType,
+        number: normalizedVehicleNumber,
+        vehicleNumber: normalizedVehicleNumber,
+        flat: normalizedFlat,
         ownerName: resident.name,
         owner: resident._id,
         slot: slot._id,
+        isParked: true,
+        parkingCategory: "resident",
+        entrySource: "resident",
         entryTime: new Date(),
         exitTime: null,
       });
 
       slot.status = "occupied";
-      slot.assignedTo = resident.name;
+      slot.assignedTo = normalizedVehicleNumber;
 
       await slot.save();
 
@@ -194,6 +220,7 @@ router.post(
         success: true,
         message: "Vehicle added successfully",
         vehicle,
+        slot,
         allocatedSlot: slot,
       });
     } catch (error) {

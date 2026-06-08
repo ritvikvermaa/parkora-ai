@@ -18,6 +18,15 @@ const visitorSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    hostFlat: {
+      type: String,
+      default: "",
+    },
+    createdByRole: {
+      type: String,
+      enum: ["resident", "guard", "admin", "public"],
+      default: "public",
+    },
     purpose: {
       type: String,
       default: "Guest Visit",
@@ -29,7 +38,7 @@ const visitorSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["pending", "approved", "rejected", "exited"],
+      enum: ["pending", "approved", "parking_unavailable", "rejected", "exited"],
       default: "pending",
     },
     entryTime: {

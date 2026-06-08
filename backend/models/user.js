@@ -17,10 +17,24 @@ const userSchema = new mongoose.Schema(
       enum: ["admin", "guard", "resident"],
       default: "resident",
     },
+    approvalStatus: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
     flat: {
       type: String,
       default: ""
-    }
+    },
+    phone: {
+      type: String,
+      default: "",
+    },
+    block: {
+      type: String,
+      enum: ["Jade", "Topaz", "Nest", "Opal", ""],
+      default: "",
+    },
   },
   { timestamps: true }
 );

@@ -48,3 +48,12 @@ export const addResidentVehicle = async (data: any) => {
 
   return await res.json();
 };
+
+export const removeResidentVehicle = async (id: string) => {
+  const res = await fetch(`${API}/api/vehicles/resident/${id}`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+
+  return await res.json();
+};

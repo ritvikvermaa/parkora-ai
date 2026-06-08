@@ -32,6 +32,9 @@ app.use("/api/admin", adminRoutes);
 const residentRoutes = require("./routes/residentRoutes");
 app.use("/api/resident", residentRoutes);
 
+const settingsRoutes = require("./routes/settingsRoutes");
+app.use("/api/settings", settingsRoutes);
+
 app.get("/", (req, res) => {
   res.send("Parkora AI Backend is running");
 });

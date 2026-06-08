@@ -3,78 +3,20 @@ const router = express.Router();
 
 const Vehicle = require("../models/vehicle");
 const ParkingSlot = require("../models/parkingSlot");
+const Visitor = require("../models/visitor");
+const User = require("../models/user");
 
 const authMiddleware = require("../middleware/authMiddleware");
 const roleMiddleware = require("../middleware/roleMiddleware");
 
-const findVisitorOrFallbackSlot = async () => {
-  let slot = await ParkingSlot.findOne({
-    isActive: true,
-    type: "visitor",
-    status: "available",
-  }).sort({ blockCode: 1, tower: 1, slotNumber: 1 });
-
-  if (slot) return slot;
-
-  slot = await ParkingSlot.findOne({
-    isActive: true,
-    type: "resident",
-    status: "available",
-    isReservedForFlat: false,
-    allowVisitorFallback: true,
-  }).sort({ blockCode: 1, tower: 1, slotNumber: 1 });
-
-  return slot;
-};
-
-const findResidentVehicleSlot = async (flat) => {
-  const normalizedFlat = flat.toUpperCase().trim();
-
-  const flatWithoutBlock = normalizedFlat.includes("-")
-    ? normalizedFlat.split("-")[1]
-    : normalizedFlat;
-
-  const blockCode = normalizedFlat.includes("-")
-    ? normalizedFlat.split("-")[0]
-    : null;
-
-  let slot = await ParkingSlot.findOne({
-    isActive: true,
-    type: "resident",
-    isReservedForFlat: true,
-    status: { $in: ["available", "reserved"] },
-    $or: [
-      { reservedForFlat: normalizedFlat },
-      { reservedForFlat: flatWithoutBlock },
-      { flat: normalizedFlat },
-      { flat: flatWithoutBlock },
-      {
-        blockCode: blockCode,
-        flat: flatWithoutBlock,
-      },
-    ],
-  }).sort({ blockCode: 1, tower: 1, slotNumber: 1 });
-
-  if (slot) return slot;
-
-  slot = await ParkingSlot.findOne({
-    isActive: true,
-    type: "visitor",
-    status: "available",
-  }).sort({ blockCode: 1, tower: 1, slotNumber: 1 });
-
-  if (slot) return slot;
-
-  slot = await ParkingSlot.findOne({
-    isActive: true,
-    type: "resident",
-    status: "available",
-    isReservedForFlat: false,
-    allowVisitorFallback: true,
-  }).sort({ blockCode: 1, tower: 1, slotNumber: 1 });
-
-  return slot;
-};
+const {
+  normalizeFlat,
+  normalizeVehicleNumber,
+  findResidentVehicleSlot,
+  flatAliases,
+} = require("../utils/parkingAllocator");
+const { canonicalFlat } = require("../utils/society");
+const { approvedUserFilter } = require("../utils/userStatus");
 
 /* ENTRY */
 
@@ -89,99 +31,61 @@ router.post(
         vehicleNumber,
         vehicleType,
         type,
+        block,
         flat,
-        slotId,
+        phone,
+        purpose,
       } = req.body;
 
       const finalVehicleType =
         vehicleType || type;
 
-      const normalizedVehicleNumber =
-        vehicleNumber
-          ?.toUpperCase()
-          .trim();
+      const normalizedVehicleNumber = normalizeVehicleNumber(vehicleNumber);
+      const normalizedFlat = canonicalFlat(flat, block);
 
       if (
         !ownerName ||
         !normalizedVehicleNumber ||
-        !finalVehicleType
+        !finalVehicleType ||
+        !normalizedFlat
       ) {
         return res.status(400).json({
           success: false,
-          message: "Missing vehicle data"
+          message: "Owner name, vehicle number, vehicle type and flat are required"
         });
       }
 
-      let slot;
+      const host = await User.findOne({
+        role: "resident",
+        ...approvedUserFilter,
+        flat: { $in: flatAliases(normalizedFlat) },
+      });
 
-      if (slotId) {
-
-        slot =
-          await ParkingSlot.findById(slotId);
-
-      } else {
-
-        slot =
-          await findVisitorOrFallbackSlot();
-
-      }
-
-      if (!slot) {
-
-        return res.status(400).json({
+      if (!host) {
+        return res.status(404).json({
           success: false,
-          message: "No slot available"
-        })
-
+          message: "No approved resident found for this flat",
+        });
       }
 
-      const vehicle =
-        await Vehicle.create({
-
-          ownerName,
-
-          number:
-            normalizedVehicleNumber,
-
-          vehicleNumber:
-            normalizedVehicleNumber,
-
-          vehicleType:
-            finalVehicleType,
-
-          type:
-            finalVehicleType,
-
-          flat:
-            flat || null,
-
-          slot:
-            slot._id,
-
-          isParked: true,
-
-          entryTime:
-            new Date(),
-
-          exitTime: null
-
-        })
-
-      slot.status =
-        "occupied";
-
-      slot.assignedTo =
-        normalizedVehicleNumber;
-
-      await slot.save();
+      const visitor = await Visitor.create({
+        visitorName: ownerName,
+        phone: phone || "N/A",
+        vehicleNumber: normalizedVehicleNumber,
+        hostResident: host?.name || normalizedFlat,
+        hostFlat: normalizedFlat,
+        purpose: purpose || "Guard entry approval",
+        createdByRole: req.user.role,
+        status: "pending",
+      });
 
       res.status(201).json({
 
         success: true,
 
-        vehicle,
+        message: "Entry request sent to resident for approval",
 
-        slot
+        visitor
 
       })
 
@@ -237,14 +141,10 @@ router.post(
         vehicleType || type;
 
       const normalizedVehicleNumber =
-        vehicleNumber
-          .toUpperCase()
-          .trim();
+        normalizeVehicleNumber(vehicleNumber);
 
       const normalizedFlat =
-        flat
-          .toUpperCase()
-          .trim();
+        normalizeFlat(flat);
 
 
       const existingVehicle =
@@ -319,6 +219,10 @@ router.post(
 
           isParked: true,
 
+          parkingCategory: "resident",
+
+          entrySource: req.user.role === "admin" ? "admin" : "resident",
+
           entryTime:
             new Date(),
 
@@ -369,6 +273,71 @@ router.post(
 
   })
 
+/* RESIDENT REMOVE */
+
+router.delete(
+  "/resident/:id",
+  authMiddleware,
+  roleMiddleware("resident", "admin"),
+  async (req, res) => {
+    try {
+      const vehicle = await Vehicle.findById(req.params.id);
+
+      if (!vehicle) {
+        return res.status(404).json({
+          success: false,
+          message: "Vehicle not found",
+        });
+      }
+
+      const user = await User.findById(req.user.id);
+      const vehicleCategory =
+        vehicle.parkingCategory ||
+        (vehicle.manufacturer === "Visitor" ? "visitor" : "resident");
+
+      if (vehicleCategory !== "resident") {
+        return res.status(400).json({
+          success: false,
+          message: "Only resident-owned vehicles can be removed here",
+        });
+      }
+
+      if (
+        req.user.role !== "admin" &&
+        String(vehicle.owner || "") !== String(user._id) &&
+        !flatAliases(user.flat, user.block).includes(normalizeFlat(vehicle.flat))
+      ) {
+        return res.status(403).json({
+          success: false,
+          message: "You can remove only vehicles linked to your flat",
+        });
+      }
+
+      if (vehicle.slot) {
+        const slot = await ParkingSlot.findById(vehicle.slot);
+
+        if (slot) {
+          slot.status = slot.isReservedForFlat ? "reserved" : "available";
+          slot.assignedTo = null;
+          await slot.save();
+        }
+      }
+
+      await Vehicle.findByIdAndDelete(vehicle._id);
+
+      res.json({
+        success: true,
+        message: "Vehicle removed and parking released",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+);
+
 /* EXIT */
 
 router.post(
@@ -390,9 +359,7 @@ router.post(
       } = req.body;
 
       const normalizedVehicleNumber =
-        vehicleNumber
-          .toUpperCase()
-          .trim();
+        normalizeVehicleNumber(vehicleNumber);
 
       const vehicle =
         await Vehicle.findOne({
@@ -417,6 +384,17 @@ router.post(
 
       }
 
+      const vehicleCategory =
+        vehicle.parkingCategory ||
+        (vehicle.manufacturer === "Visitor" ? "visitor" : "resident");
+
+      if (req.user.role === "guard" && vehicleCategory === "resident") {
+        return res.status(403).json({
+          success: false,
+          message: "Resident-owned vehicles can only be managed by residents or admins",
+        });
+      }
+
       vehicle.isParked =
         false;
 
@@ -424,6 +402,18 @@ router.post(
         new Date();
 
       await vehicle.save();
+
+      await Visitor.findOneAndUpdate(
+        {
+          vehicleNumber: normalizedVehicleNumber,
+          status: "approved",
+        },
+        {
+          status: "exited",
+          exitTime: vehicle.exitTime,
+        },
+        { sort: { entryTime: -1 } }
+      );
 
       const slot =
         await ParkingSlot.findById(

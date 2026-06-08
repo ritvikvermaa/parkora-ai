@@ -2,16 +2,18 @@ const express = require("express");
 const router = express.Router();
 
 const ParkingSlot = require("../models/parkingSlot");
+const User = require("../models/user");
+const {
+  blockMap,
+  canonicalFlat,
+  flatAliases,
+  floorFromFlat,
+  getFlatParts,
+} = require("../utils/society");
+const { approvedUserFilter } = require("../utils/userStatus");
 
 const authMiddleware = require("../middleware/authMiddleware");
 const roleMiddleware = require("../middleware/roleMiddleware");
-
-const blockMap = {
-  Jade: "J",
-  Topaz: "T",
-  Nest: "N",
-  Opal: "O",
-};
 
 // Add parking slot - admin only
 router.post(
@@ -41,18 +43,22 @@ router.post(
         });
       }
 
-      const finalReservedForFlat =
-        isReservedForFlat ? reservedForFlat || flat : null;
+      const finalFlat = flat ? canonicalFlat(flat, block) : null;
+      const derivedTower = finalFlat ? getFlatParts(finalFlat).tower : tower;
+      const derivedFloor = finalFlat ? floorFromFlat(finalFlat) : "";
+      const finalReservedForFlat = isReservedForFlat
+        ? canonicalFlat(reservedForFlat || flat || "", block)
+        : null;
 
       const slot = await ParkingSlot.create({
         slotNumber,
         block,
         blockCode: blockMap[block],
-        tower,
-        flat: flat || null,
-        floor,
+        tower: derivedTower || tower,
+        flat: finalFlat,
+        floor: derivedFloor || floor,
         type,
-        status: status || "available",
+        status: isReservedForFlat ? "reserved" : status || "available",
         isReservedForFlat: Boolean(isReservedForFlat),
         reservedForFlat: finalReservedForFlat,
         assignedTo: assignedTo || null,
@@ -119,7 +125,7 @@ router.get(
         status: "available",
       }).sort({ blockCode: 1, tower: 1, slotNumber: 1 });
 
-      const fallbackResidentSlots = await ParkingSlot.find({
+      const residentSlots = await ParkingSlot.find({
         isActive: true,
         type: "resident",
         status: "available",
@@ -127,6 +133,23 @@ router.get(
         reservedForFlat: null,
         allowVisitorFallback: true,
       }).sort({ blockCode: 1, tower: 1, slotNumber: 1 });
+
+      const handedOverFlats = new Set(
+        (
+          await User.find({
+            role: "resident",
+            ...approvedUserFilter,
+            flat: { $ne: "" },
+          }).select("flat")
+        ).flatMap((user) => flatAliases(user.flat))
+      );
+
+      const fallbackResidentSlots = residentSlots.filter(
+        (slot) =>
+          !flatAliases(slot.flat || slot.reservedForFlat).some((flat) =>
+            handedOverFlats.has(flat)
+          )
+      );
 
       const slots = [...visitorSlots, ...fallbackResidentSlots];
 

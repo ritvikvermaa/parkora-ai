@@ -4,10 +4,12 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 
 const User = require("../models/user");
+const { isLegacyApprovedUser } = require("../utils/userStatus");
+const { canonicalFlat } = require("../utils/society");
 
 router.post("/register", async (req, res) => {
   try {
-    const { name, email, password, role, flat } = req.body;
+    const { name, email, password, role, flat, phone, block } = req.body;
 
     const existingUser = await User.findOne({ email });
 
@@ -18,24 +20,33 @@ router.post("/register", async (req, res) => {
       });
     }
 
+    const finalRole = role || "resident";
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = await User.create({
       name,
       email,
       password: hashedPassword,
-      role,
-      flat,
+      role: finalRole,
+      flat: flat ? canonicalFlat(flat, block) : "",
+      phone: phone || "",
+      block: block || "",
+      approvalStatus: finalRole === "admin" ? "approved" : "pending",
     });
 
     res.status(201).json({
       success: true,
-      message: "User registered successfully",
+      message:
+        user.approvalStatus === "approved"
+          ? "User registered successfully"
+          : "Registration sent to admin for approval",
       user: {
         id: user._id,
         name: user.name,
         email: user.email,
         role: user.role,
+        approvalStatus: user.approvalStatus,
       },
     });
   } catch (error) {
@@ -69,6 +80,26 @@ router.post("/login", async (req, res) => {
       });
     }
 
+    const rawUser = await User.collection.findOne({ _id: user._id });
+
+    if (
+      (user.role === "admin" || isLegacyApprovedUser(rawUser)) &&
+      user.approvalStatus !== "approved"
+    ) {
+      user.approvalStatus = "approved";
+      await user.save();
+    }
+
+    if (user.approvalStatus !== "approved") {
+      return res.status(403).json({
+        success: false,
+        message:
+          user.approvalStatus === "rejected"
+            ? "Your registration request was rejected"
+            : "Your registration is pending admin approval",
+      });
+    }
+
     const token = jwt.sign(
       {
         id: user._id,
@@ -87,6 +118,8 @@ router.post("/login", async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        flat: canonicalFlat(user.flat, user.block),
+        approvalStatus: user.approvalStatus,
       },
     });
   } catch (error) {

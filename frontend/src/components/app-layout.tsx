@@ -1,6 +1,6 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import {
-  LayoutDashboard, Shield, ShieldCheck, Car, Users, Sparkles, Settings,
+  LayoutDashboard, Shield, ShieldCheck, Car, Sparkles, Settings,
   Search, Bell, Sun, Moon, Menu, X, LogOut, ChevronDown, ParkingSquare,
 } from "lucide-react";
 import { useState } from "react";
@@ -31,24 +31,66 @@ export function AppLayout() {
   const nav =
     user?.role === "admin"
       ? [
-          { to: "/guard", label: "Guard", icon: ShieldCheck },
           { to: "/admin", label: "Admin", icon: Shield },
           { to: "/slots", label: "Parking Slots", icon: Car },
-          { to: "/visitors", label: "Visitors", icon: Users },
           { to: "/ai-insights", label: "AI Insights", icon: Sparkles },
           { to: "/settings", label: "Settings", icon: Settings },
         ]
       : user?.role === "guard"
       ? [
           { to: "/guard", label: "Guard", icon: ShieldCheck },
-          { to: "/slots", label: "Parking Slots", icon: Car },
-          { to: "/visitors", label: "Visitors", icon: Users },
           { to: "/settings", label: "Settings", icon: Settings },
         ]
       : [
           { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
           { to: "/settings", label: "Settings", icon: Settings },
         ];
+
+  const sectionNav: Record<string, { href: string; label: string }[]> = {
+    "/admin": [
+      { href: "#operations", label: "Operations" },
+      { href: "#approvals", label: "Approvals" },
+      { href: "#analytics", label: "Analytics" },
+      { href: "#residents", label: "Residents" },
+      { href: "#activity", label: "Activity" },
+    ],
+    "/slots": [
+      { href: "#slot-summary", label: "Summary" },
+      { href: "#slot-filters", label: "Search & Filters" },
+      { href: "#block-jade", label: "Jade" },
+      { href: "#block-topaz", label: "Topaz" },
+      { href: "#block-nest", label: "Nest" },
+      { href: "#block-opal", label: "Opal" },
+    ],
+    "/guard": [
+      { href: "#entry-request", label: "Entry Request" },
+      { href: "#visitor-exit", label: "Visitor Exit" },
+      { href: "#quick-search", label: "Quick Search" },
+      { href: "#visitor-vehicles", label: "Visitors" },
+      { href: "#resident-vehicles", label: "Residents" },
+    ],
+    "/dashboard": [
+      { href: "#resident-vehicles", label: "My Vehicles" },
+      { href: "#visitor-vehicles", label: "Visitor Vehicles" },
+      { href: "#entry-requests", label: "Entry Requests" },
+      { href: "#visitor-history", label: "Visitor History" },
+      { href: "#assigned-slots", label: "Assigned Slots" },
+    ],
+    "/ai-insights": [
+      { href: "#pressure-model", label: "Pressure Model" },
+      { href: "#actions", label: "Actions" },
+      { href: "#violations", label: "Violations" },
+      { href: "#ai-counts", label: "Counts" },
+    ],
+    "/settings": [
+      { href: "#profile", label: "Profile" },
+      { href: "#appearance", label: "Appearance" },
+      { href: "#notifications", label: "Notifications" },
+      { href: "#society", label: "Society" },
+    ],
+  };
+
+  const activeSections = sectionNav[pathname] || [];
 
   const handleLogout = () => {
     logout();
@@ -82,19 +124,33 @@ export function AppLayout() {
             const Icon = item.icon;
 
             return (
-              <Link
-                key={item.to}
-                to={item.to}
-                className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                  active
-                    ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-soft"
-                    : "text-sidebar-foreground hover:bg-sidebar-accent"
+              <div key={item.to}>
+                <Link
+                  to={item.to}
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                    active
+                      ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-soft"
+                      : "text-sidebar-foreground hover:bg-sidebar-accent"
+                  )}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  {!collapsed && <span>{item.label}</span>}
+                </Link>
+                {active && !collapsed && activeSections.length > 0 && (
+                  <div className="ml-7 mt-1 mb-2 space-y-0.5">
+                    {activeSections.map((section) => (
+                      <a
+                        key={section.href}
+                        href={section.href}
+                        className="block rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                      >
+                        {section.label}
+                      </a>
+                    ))}
+                  </div>
                 )}
-              >
-                <Icon className="h-4 w-4 shrink-0" />
-                {!collapsed && <span>{item.label}</span>}
-              </Link>
+              </div>
             );
           })}
         </nav>
@@ -134,20 +190,35 @@ export function AppLayout() {
                 const active = pathname === item.to;
 
                 return (
-                  <Link
-                    key={item.to}
-                    to={item.to}
-                    onClick={() => setMobileOpen(false)}
-                    className={cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-2 text-sm",
-                      active
-                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                        : "hover:bg-sidebar-accent"
+                  <div key={item.to}>
+                    <Link
+                      to={item.to}
+                      onClick={() => setMobileOpen(false)}
+                      className={cn(
+                        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm",
+                        active
+                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                          : "hover:bg-sidebar-accent"
+                      )}
+                    >
+                      <Icon className="h-4 w-4" />
+                      {item.label}
+                    </Link>
+                    {active && activeSections.length > 0 && (
+                      <div className="ml-7 mb-2 space-y-0.5">
+                        {activeSections.map((section) => (
+                          <a
+                            key={section.href}
+                            href={section.href}
+                            onClick={() => setMobileOpen(false)}
+                            className="block rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-sidebar-accent"
+                          >
+                            {section.label}
+                          </a>
+                        ))}
+                      </div>
                     )}
-                  >
-                    <Icon className="h-4 w-4" />
-                    {item.label}
-                  </Link>
+                  </div>
                 );
               })}
             </div>

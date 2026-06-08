@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Search, Filter, Plus, Trash2 } from "lucide-react";
+import { Search, Filter, Plus, Trash2, Building2 } from "lucide-react";
 
 import { PageHeader, SectionCard } from "@/components/section";
 import { Input } from "@/components/ui/input";
@@ -72,6 +72,7 @@ function SlotsPage() {
 
   const [parkingSlots, setParkingSlots] = useState<ParkingSlot[]>([]);
   const [filter, setFilter] = useState<SlotStatus | "all">("all");
+  const [blockFilter, setBlockFilter] = useState<ParkingSlot["block"] | "all">("all");
   const [query, setQuery] = useState("");
   const [active, setActive] = useState<ParkingSlot | null>(null);
   const [openAdd, setOpenAdd] = useState(false);
@@ -79,10 +80,10 @@ function SlotsPage() {
 
   const [form, setForm] = useState({
     slotNumber: "",
-    block: "Jade",
-    tower: "112",
+    block: "",
+    tower: "",
     flat: "",
-    floor: "1",
+    floor: "",
     type: "resident",
     status: "available",
     isReservedForFlat: false,
@@ -122,10 +123,10 @@ function SlotsPage() {
       setOpenAdd(false);
       setForm({
         slotNumber: "",
-        block: "Jade",
-        tower: "112",
+        block: "",
+        tower: "",
         flat: "",
-        floor: "1",
+        floor: "",
         type: "resident",
         status: "available",
         isReservedForFlat: false,
@@ -163,6 +164,7 @@ function SlotsPage() {
     const displayStatus = getDisplayStatus(s);
 
     if (filter !== "all" && displayStatus !== filter) return false;
+    if (blockFilter !== "all" && s.block !== blockFilter) return false;
 
     if (
       query &&
@@ -176,9 +178,14 @@ function SlotsPage() {
     return true;
   });
 
-  const groups = Array.from(
-    new Set(slots.map((s) => `${s.block} · Tower ${s.tower}`))
-  );
+  const blocks: ParkingSlot["block"][] = ["Jade", "Topaz", "Nest", "Opal"];
+  const groups = blocks.filter((block) => slots.some((s) => s.block === block));
+  const slotSummary = {
+    total: parkingSlots.length,
+    available: parkingSlots.filter((slot) => slot.status === "available").length,
+    occupied: parkingSlots.filter((slot) => slot.status === "occupied").length,
+    reserved: parkingSlots.filter((slot) => slot.status === "reserved").length,
+  };
 
   return (
     <div className="space-y-6">
@@ -201,17 +208,26 @@ function SlotsPage() {
         </div>
       )}
 
+      <div id="slot-summary" className="grid grid-cols-2 lg:grid-cols-4 gap-4 scroll-mt-24">
+        <SummaryCard label="Total Slots" value={slotSummary.total} />
+        <SummaryCard label="Available" value={slotSummary.available} tone="success" />
+        <SummaryCard label="Occupied" value={slotSummary.occupied} tone="destructive" />
+        <SummaryCard label="Reserved" value={slotSummary.reserved} tone="warning" />
+      </div>
+
+      <div id="slot-filters" className="scroll-mt-24">
       <SectionCard
-        title="Filters"
+        title="Search & Filters"
         description={`${slots.length} of ${parkingSlots.length} slots`}
       >
+        <div className="space-y-3">
         <div className="flex flex-col md:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search slot, block, tower, flat e.g. J-112C"
+              placeholder="Search by slot, block, tower, plate, or flat format such as N22A"
               className="pl-9"
             />
           </div>
@@ -238,7 +254,31 @@ function SlotsPage() {
             ))}
           </div>
         </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant={blockFilter === "all" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setBlockFilter("all")}
+          >
+            <Building2 className="h-3 w-3 mr-1" />
+            All Blocks
+          </Button>
+
+          {blocks.map((block) => (
+            <Button
+              key={block}
+              variant={blockFilter === block ? "default" : "outline"}
+              size="sm"
+              onClick={() => setBlockFilter(block)}
+            >
+              {block}
+            </Button>
+          ))}
+        </div>
+        </div>
       </SectionCard>
+      </div>
 
       <div className="space-y-6">
         {groups.length === 0 ? (
@@ -251,14 +291,21 @@ function SlotsPage() {
           </SectionCard>
         ) : (
           groups.map((group) => (
+            <div key={group} id={`block-${group.toLowerCase()}`} className="scroll-mt-24">
             <SectionCard
-              key={group}
-              title={group}
-              description={`${slots.filter((s) => `${s.block} · Tower ${s.tower}` === group).length} slots shown`}
+              title={`${group} Block`}
+              description={`${slots.filter((s) => s.block === group).length} slots across all towers`}
             >
-              <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-9 lg:grid-cols-12 gap-2">
+              <div className="mb-4 grid grid-cols-2 md:grid-cols-4 gap-2">
+                <BlockMetric label="Available" value={slots.filter((s) => s.block === group && s.status === "available").length} />
+                <BlockMetric label="Occupied" value={slots.filter((s) => s.block === group && s.status === "occupied").length} />
+                <BlockMetric label="Reserved" value={slots.filter((s) => s.block === group && s.status === "reserved").length} />
+                <BlockMetric label="Visitor" value={slots.filter((s) => s.block === group && s.type === "visitor").length} />
+              </div>
+
+              <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-8 lg:grid-cols-12 gap-2">
                 {slots
-                  .filter((s) => `${s.block} · Tower ${s.tower}` === group)
+                  .filter((s) => s.block === group)
                   .map((s) => {
                     const displayStatus = getDisplayStatus(s);
 
@@ -274,13 +321,17 @@ function SlotsPage() {
                       >
                         <span>{s.slotNumber}</span>
                         <span className="text-[9px] opacity-70">
-                          {s.flat || s.type}
+                          {s.flat || `T${s.tower}`}
+                        </span>
+                        <span className="text-[8px] opacity-60">
+                          {s.type}
                         </span>
                       </button>
                     );
                   })}
               </div>
             </SectionCard>
+            </div>
           ))
         )}
       </div>
@@ -301,7 +352,7 @@ function SlotsPage() {
 
           <form className="space-y-3" onSubmit={handleAddSlot}>
             <Input
-              placeholder="Slot Number e.g. J-112C-P1"
+              placeholder="Slot number format: flat code + parking index, such as N22A-P1"
               value={form.slotNumber}
               onChange={(e) => setForm({ ...form, slotNumber: e.target.value })}
               required
@@ -311,7 +362,9 @@ function SlotsPage() {
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               value={form.block}
               onChange={(e) => setForm({ ...form, block: e.target.value })}
+              required
             >
+              <option value="">Select Block</option>
               <option value="Jade">Jade</option>
               <option value="Topaz">Topaz</option>
               <option value="Nest">Nest</option>
@@ -319,24 +372,28 @@ function SlotsPage() {
             </select>
 
             <Input
-              placeholder="Tower e.g. 112"
+              placeholder="Tower number only, for example 22 or 113"
               value={form.tower}
               onChange={(e) => setForm({ ...form, tower: e.target.value })}
               required
             />
 
             <Input
-              placeholder="Flat e.g. 112C"
+              placeholder="Flat format: tower + flat letter, or full code such as N22A"
               value={form.flat}
               onChange={(e) => setForm({ ...form, flat: e.target.value })}
             />
 
             <Input
-              placeholder="Floor e.g. 1"
+              placeholder="Auto floor: A=1st, B=2nd, C=3rd, D=4th; enter manually for visitor slots"
               value={form.floor}
               onChange={(e) => setForm({ ...form, floor: e.target.value })}
-              required
             />
+            {form.flat && (
+              <div className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                {getDerivedFloorText(form.flat)}
+              </div>
+            )}
 
             <select
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -374,7 +431,7 @@ function SlotsPage() {
 
             {form.isReservedForFlat && (
               <Input
-                placeholder="Reserved For Flat e.g. 112C"
+                placeholder="Reserved flat format, such as N22A"
                 value={form.reservedForFlat}
                 onChange={(e) =>
                   setForm({ ...form, reservedForFlat: e.target.value })
@@ -473,4 +530,51 @@ function Row({
       </span>
     </div>
   );
+}
+
+function SummaryCard({
+  label,
+  value,
+  tone = "default",
+}: {
+  label: string;
+  value: number;
+  tone?: "default" | "success" | "warning" | "destructive";
+}) {
+  const toneMap = {
+    default: "bg-card",
+    success: "bg-success/10 border-success/20",
+    warning: "bg-warning/15 border-warning/30",
+    destructive: "bg-destructive/10 border-destructive/20",
+  };
+
+  return (
+    <div className={cn("rounded-lg border p-4", toneMap[tone])}>
+      <div className="text-xs uppercase text-muted-foreground">{label}</div>
+      <div className="mt-2 text-2xl font-semibold">{value}</div>
+    </div>
+  );
+}
+
+function BlockMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-md border bg-muted/30 px-3 py-2">
+      <div className="text-[11px] text-muted-foreground">{label}</div>
+      <div className="font-semibold">{value}</div>
+    </div>
+  );
+}
+
+function getDerivedFloorText(flat: string) {
+  const letter = flat.trim().toUpperCase().match(/[A-Z]$/)?.[0];
+  const map: Record<string, string> = {
+    A: "1st floor",
+    B: "2nd floor",
+    C: "3rd floor",
+    D: "4th floor",
+  };
+
+  return map[letter]
+    ? `Detected ${letter} flat: this slot will be saved as ${map[letter]}.`
+    : "Floor is derived from final flat letter when possible: A=1st, B=2nd, C=3rd, D=4th.";
 }

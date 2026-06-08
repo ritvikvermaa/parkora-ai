@@ -10,6 +10,9 @@ import {
   Clock,
   Plus,
   MapPin,
+  AlertCircle,
+  CheckCircle2,
+  Trash2,
 } from "lucide-react";
 
 import { PageHeader, SectionCard } from "@/components/section";
@@ -34,7 +37,11 @@ import {
   inviteVisitor,
 } from "@/services/residentService";
 
-import { addResidentVehicle } from "@/services/vehicleService";
+import { addResidentVehicle, removeResidentVehicle } from "@/services/vehicleService";
+import {
+  getPendingVisitors,
+  approveVisitor,
+} from "@/services/visitorService";
 
 export const Route = createFileRoute("/_app/dashboard")({
   head: () => ({
@@ -50,9 +57,16 @@ export const Route = createFileRoute("/_app/dashboard")({
 
 function ResidentDashboard() {
   const [data, setData] = useState<any>(null);
+  const [pendingVisitors, setPendingVisitors] = useState<any[]>([]);
 
   const [inviteOpen, setInviteOpen] = useState(false);
   const [vehicleOpen, setVehicleOpen] = useState(false);
+  const [vehicleToRemove, setVehicleToRemove] = useState<any>(null);
+  const [notice, setNotice] = useState<{
+    title: string;
+    description: string;
+    tone: "success" | "warning";
+  } | null>(null);
 
   const [visitorForm, setVisitorForm] = useState({
     visitorName: "",
@@ -75,11 +89,25 @@ function ResidentDashboard() {
 
   const loadDashboard = async () => {
     const dashboard = await getResidentDashboard();
+    const pending = await getPendingVisitors();
     setData(dashboard);
+    setPendingVisitors(pending.visitors || []);
   };
 
   const user = data?.user;
   const vehicles = data?.vehicles || [];
+  const residentVehicles = vehicles.filter(
+    (vehicle: any) =>
+      (vehicle.parkingCategory ||
+        (vehicle.manufacturer === "Visitor" ? "visitor" : "resident")) ===
+      "resident"
+  );
+  const visitorVehicles = vehicles.filter(
+    (vehicle: any) =>
+      (vehicle.parkingCategory ||
+        (vehicle.manufacturer === "Visitor" ? "visitor" : "resident")) ===
+      "visitor"
+  );
   const visitors = data?.visitors || [];
   const slots = data?.assignedSlots || [];
 
@@ -87,7 +115,11 @@ function ResidentDashboard() {
     const data = await inviteVisitor(visitorForm);
 
     if (data.success) {
-      alert(`Visitor invited.\nSlot: ${data.allottedSlot.slotNumber}`);
+      setNotice({
+        title: "Visitor parking allocated",
+        description: `${visitorForm.visitorName} has been allotted slot ${data.allottedSlot.slotNumber}.`,
+        tone: "success",
+      });
 
       setInviteOpen(false);
 
@@ -100,7 +132,39 @@ function ResidentDashboard() {
 
       loadDashboard();
     } else {
-      alert(data.message || "Failed to invite visitor");
+      setNotice({
+        title: "Invite could not be completed",
+        description: data.message || "Failed to invite visitor",
+        tone: "warning",
+      });
+    }
+  };
+
+  const handleVisitorApproval = async (id: string) => {
+    const res = await approveVisitor(id);
+
+    if (res.success) {
+      setNotice(
+        res.parkingUnavailable
+          ? {
+              title: "Parking could not be allotted",
+              description:
+                "The request was updated. No visitor or fallback parking is available right now.",
+              tone: "warning",
+            }
+          : {
+              title: "Visitor approved",
+              description: `Parking allocated at slot ${res.slot?.slotNumber || "N/A"}.`,
+              tone: "success",
+            }
+      );
+      loadDashboard();
+    } else {
+      setNotice({
+        title: "Request could not be updated",
+        description: res.message || "Unable to update visitor request",
+        tone: "warning",
+      });
     }
   };
 
@@ -114,7 +178,11 @@ function ResidentDashboard() {
     const res = await addResidentVehicle(payload);
 
     if (res.success) {
-      alert(`Vehicle Added Successfully\nSlot: ${res.slot?.slotNumber || "N/A"}`);
+      setNotice({
+        title: "Vehicle added",
+        description: `Parking allocated at slot ${res.slot?.slotNumber || "N/A"}.`,
+        tone: "success",
+      });
 
       setVehicleOpen(false);
 
@@ -128,14 +196,40 @@ function ResidentDashboard() {
 
       loadDashboard();
     } else {
-      alert(res.message || "Failed to add vehicle");
+      setNotice({
+        title: "Vehicle could not be added",
+        description: res.message || "Failed to add vehicle",
+        tone: "warning",
+      });
+    }
+  };
+
+  const handleRemoveVehicle = async () => {
+    if (!vehicleToRemove) return;
+
+    const res = await removeResidentVehicle(vehicleToRemove._id);
+
+    if (res.success) {
+      setNotice({
+        title: "Vehicle removed",
+        description: "The vehicle was removed and its parking slot was released.",
+        tone: "success",
+      });
+      setVehicleToRemove(null);
+      loadDashboard();
+    } else {
+      setNotice({
+        title: "Vehicle could not be removed",
+        description: res.message || "Failed to remove vehicle",
+        tone: "warning",
+      });
     }
   };
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title={`Welcome back, ${user?.name?.split(" ")[0] || ""} 👋`}
+        title={`Welcome back, ${user?.name?.split(" ")[0] || ""}`}
         description="Resident Dashboard"
         actions={
           <div className="flex gap-2">
@@ -162,7 +256,7 @@ function ResidentDashboard() {
 
         <StatCard
           label="My Vehicles"
-          value={vehicles.length}
+          value={residentVehicles.length}
           icon={Car}
           tone="info"
         />
@@ -175,7 +269,7 @@ function ResidentDashboard() {
 
         <StatCard
           label="Visitors"
-          value={visitors.length}
+          value={visitorVehicles.length || visitors.length}
           icon={Users}
           tone="warning"
         />
@@ -183,15 +277,16 @@ function ResidentDashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
-          <SectionCard title="My Vehicles" description="Registered Vehicles">
+          <div id="resident-vehicles" className="scroll-mt-24">
+          <SectionCard title="Resident Vehicles" description="Your registered vehicles and assigned parking">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {vehicles.length === 0 ? (
+              {residentVehicles.length === 0 ? (
                 <div className="text-sm text-muted-foreground">
-                  No vehicles found
+                  No resident vehicles found
                 </div>
               ) : (
-                vehicles.map((v: any) => (
-                  <div key={v._id} className="rounded-xl border p-4">
+                residentVehicles.map((v: any) => (
+                  <div key={v._id} className="rounded-lg border p-4">
                     <div className="flex justify-between">
                       <div>
                         <div className="font-semibold capitalize">
@@ -203,7 +298,17 @@ function ResidentDashboard() {
                         </div>
                       </div>
 
-                      <Badge>{v.exitTime ? "Exited" : "Parked"}</Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge>{v.exitTime ? "Exited" : "Parked"}</Badge>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setVehicleToRemove(v)}
+                          aria-label="Remove vehicle"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
 
                     <div className="mt-4">
@@ -223,7 +328,43 @@ function ResidentDashboard() {
               )}
             </div>
           </SectionCard>
+          </div>
 
+          <div id="visitor-vehicles" className="scroll-mt-24">
+          <SectionCard title="Visitor Vehicles" description="Approved visitor vehicles currently linked to your flat">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {visitorVehicles.length === 0 ? (
+                <div className="text-sm text-muted-foreground">
+                  No visitor vehicles are parked
+                </div>
+              ) : (
+                visitorVehicles.map((v: any) => (
+                  <div key={v._id} className="rounded-lg border p-4">
+                    <div className="flex justify-between">
+                      <div>
+                        <div className="font-semibold">{v.ownerName || "Visitor"}</div>
+                        <div className="text-xs text-muted-foreground">
+                          Visitor vehicle
+                        </div>
+                      </div>
+                      <Badge variant="secondary">Parked</Badge>
+                    </div>
+
+                    <div className="mt-4">
+                      <div className="font-mono">{v.vehicleNumber || v.number}</div>
+                      <div className="text-xs flex gap-1 mt-1 text-muted-foreground">
+                        <MapPin className="h-3 w-3" />
+                        Slot {v.slot?.slotNumber || "N/A"}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </SectionCard>
+          </div>
+
+          <div id="visitor-history" className="scroll-mt-24">
           <SectionCard title="Recent Visitors" description="Visitor History">
             <div className="space-y-2">
               {visitors.length === 0 ? (
@@ -240,7 +381,7 @@ function ResidentDashboard() {
                     </div>
 
                     <div className="text-xs text-muted-foreground">
-                      Status: {v.status}
+                      Status: {formatVisitorStatus(v.status)}
                     </div>
 
                     <div className="text-xs text-muted-foreground">
@@ -251,6 +392,47 @@ function ResidentDashboard() {
               )}
             </div>
           </SectionCard>
+          </div>
+
+          <div id="entry-requests" className="scroll-mt-24">
+          <SectionCard
+            title="Entry Requests"
+            description={`${pendingVisitors.length} waiting for your approval`}
+          >
+            <div className="space-y-3">
+              {pendingVisitors.length === 0 ? (
+                <div className="text-sm text-muted-foreground">
+                  No pending entry requests
+                </div>
+              ) : (
+                pendingVisitors.map((visitor: any) => (
+                  <div key={visitor._id} className="rounded-lg border p-4">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                      <div>
+                        <div className="font-medium">{visitor.visitorName}</div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          {visitor.vehicleNumber} · {visitor.phone}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {visitor.purpose || "Guest Visit"}
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => handleVisitorApproval(visitor._id)}
+                        >
+                          Approve
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </SectionCard>
+          </div>
         </div>
 
         <div className="space-y-6">
@@ -276,6 +458,7 @@ function ResidentDashboard() {
             </CardContent>
           </Card>
 
+          <div id="assigned-slots" className="scroll-mt-24">
           <SectionCard
             title="Assigned Slots"
             actions={<Bell className="h-4 w-4" />}
@@ -298,6 +481,7 @@ function ResidentDashboard() {
               )}
             </div>
           </SectionCard>
+          </div>
 
           <QuickAction
             icon={Users}
@@ -327,7 +511,7 @@ function ResidentDashboard() {
           <DialogHeader>
             <DialogTitle>Invite Visitor</DialogTitle>
             <DialogDescription>
-              Send a visitor request to the guard and auto-allot a visitor slot.
+              A parking slot is allocated automatically as soon as the invite is created.
             </DialogDescription>
           </DialogHeader>
 
@@ -377,7 +561,7 @@ function ResidentDashboard() {
             />
 
             <Button className="w-full" onClick={submitVisitor}>
-              Send Request
+              Invite and Allocate
             </Button>
           </div>
         </DialogContent>
@@ -463,8 +647,68 @@ function ResidentDashboard() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!vehicleToRemove} onOpenChange={(open) => !open && setVehicleToRemove(null)}>
+        <DialogContent>
+          {vehicleToRemove && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Remove vehicle?</DialogTitle>
+                <DialogDescription>
+                  {vehicleToRemove.vehicleNumber || vehicleToRemove.number} will be removed from your resident vehicles and its parking slot will be released.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setVehicleToRemove(null)}>
+                  Cancel
+                </Button>
+                <Button variant="destructive" className="flex-1" onClick={handleRemoveVehicle}>
+                  Remove Vehicle
+                </Button>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!notice} onOpenChange={(open) => !open && setNotice(null)}>
+        <DialogContent>
+          {notice && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  {notice.tone === "success" ? (
+                    <CheckCircle2 className="h-5 w-5 text-success" />
+                  ) : (
+                    <AlertCircle className="h-5 w-5 text-warning" />
+                  )}
+                  {notice.title}
+                </DialogTitle>
+                <DialogDescription>{notice.description}</DialogDescription>
+              </DialogHeader>
+
+              <Button onClick={() => setNotice(null)} className="w-full">
+                Got it
+              </Button>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
+}
+
+function formatVisitorStatus(status: string) {
+  const labels: Record<string, string> = {
+    pending: "Pending approval",
+    approved: "Parking allotted",
+    parking_unavailable: "Parking could not be allotted",
+    rejected: "Rejected",
+    exited: "Exited",
+  };
+
+  return labels[status] || status;
 }
 
 function QuickAction({ icon: Icon, title, desc, to, onClick }: any) {
