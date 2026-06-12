@@ -10,10 +10,13 @@ import {
   UserCheck,
   UserX,
   ShieldCheck,
+  Activity,
 } from "lucide-react";
 
 import { PageHeader, SectionCard } from "@/components/section";
 import { StatCard } from "@/components/stat-card";
+import { EmptyState, StatusPill } from "@/components/dashboard-ui";
+import { DashboardNotificationsFeed } from "@/components/notifications";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -50,8 +53,7 @@ import {
   getPendingUsers,
   updateUserApproval,
 } from "@/services/adminService";
-
-import { weeklyTraffic, slotMix } from "@/lib/dummy-data";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/admin")({
   head: () => ({
@@ -60,12 +62,47 @@ export const Route = createFileRoute("/_app/admin")({
 
   component: () => (
     <ProtectedRoute roles={["admin"]}>
-      <AdminDashboard />
+      <AdminDashboard view="overview" />
     </ProtectedRoute>
   ),
 });
 
-function AdminDashboard() {
+export type AdminView =
+  | "overview"
+  | "operations"
+  | "analytics"
+  | "approvals"
+  | "residents"
+  | "activity";
+
+const adminViewMeta: Record<AdminView, { title: string; description: string }> = {
+  overview: {
+    title: "Society Overview",
+    description: "Live parking and visitor operations for Smartworld Gems.",
+  },
+  operations: {
+    title: "Operations Health",
+    description: "Capacity, approvals and gate-load signals.",
+  },
+  analytics: {
+    title: "Parking Analytics",
+    description: "Live traffic and slot distribution breakdowns.",
+  },
+  approvals: {
+    title: "Registration Approvals",
+    description: "Review pending resident access requests.",
+  },
+  residents: {
+    title: "Residents",
+    description: "Approved residents and flat assignments.",
+  },
+  activity: {
+    title: "Recent Activity",
+    description: "Latest vehicle movements across the society.",
+  },
+};
+
+export function AdminDashboard({ view = "overview" }: { view?: AdminView }) {
   const [stats, setStats] = useState<any>(null);
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [residentsData, setResidentsData] = useState<any[]>([]);
@@ -101,16 +138,25 @@ function AdminDashboard() {
   const occRate = stats?.totalSlots
     ? Math.round((stats.occupiedSlots / stats.totalSlots) * 100)
     : 0;
+  const weeklyTraffic = buildTrafficData(recentActivity);
+  const slotMix = buildSlotMix(stats);
+  const currentView = adminViewMeta[view] ? view : "overview";
+  const showStats = currentView === "overview" || currentView === "operations";
+  const showOperations = currentView === "overview" || currentView === "operations";
+  const showAnalytics = currentView === "analytics";
+  const showApprovals = currentView === "approvals";
+  const showResidents = currentView === "residents";
+  const showActivity = currentView === "activity";
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Society Overview"
-        description="Parkora Live Dashboard"
+        title={adminViewMeta[currentView].title}
+        description={adminViewMeta[currentView].description}
         actions={<Button variant="outline">Export Report</Button>}
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {showStats && <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Total Slots" value={stats?.totalSlots || 0} icon={ParkingCircle} />
 
         <StatCard
@@ -133,52 +179,60 @@ function AdminDashboard() {
           icon={Car}
           tone="success"
         />
-      </div>
+      </div>}
 
-      <div id="operations" className="scroll-mt-24">
-      <SectionCard
-        title="Operations Health"
-        description="Live control-room signals for approvals, capacity and gate load"
+      {showOperations && <div
+        id="operations"
+        className={cn(
+          "scroll-mt-24",
+          currentView === "overview" && "grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_400px] gap-6"
+        )}
       >
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-sm">
-              <span className="font-medium">Slot Occupancy</span>
-              <span>{occRate}%</span>
+        <SectionCard
+          title="Operations Health"
+          description="Live control-room signals for approvals, capacity and gate load"
+        >
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-medium">Slot Occupancy</span>
+                <span>{occRate}%</span>
+              </div>
+              <Progress value={occRate} />
+              <div className="text-xs text-muted-foreground">
+                {stats?.occupiedSlots || 0} occupied of {stats?.totalSlots || 0} total slots
+              </div>
             </div>
-            <Progress value={occRate} />
-            <div className="text-xs text-muted-foreground">
-              {stats?.occupiedSlots || 0} occupied of {stats?.totalSlots || 0} total slots
-            </div>
+
+            <OpsSignal
+              icon={UserCheck}
+              label="Approvals"
+              value={pendingUsers.length}
+              desc={pendingUsers.length ? "Review resident requests" : "No pending user approvals"}
+              tone={pendingUsers.length ? "warning" : "success"}
+            />
+
+            <OpsSignal
+              icon={ShieldCheck}
+              label="Gate Load"
+              value={stats?.activeVehicles || 0}
+              desc="Active parked vehicles across resident and visitor traffic"
+              tone="info"
+            />
           </div>
+        </SectionCard>
 
-          <OpsSignal
-            icon={UserCheck}
-            label="Approvals"
-            value={pendingUsers.length}
-            desc={pendingUsers.length ? "Review resident requests" : "No pending user approvals"}
-            tone={pendingUsers.length ? "warning" : "success"}
-          />
+        {currentView === "overview" && <DashboardNotificationsFeed />}
+      </div>}
 
-          <OpsSignal
-            icon={ShieldCheck}
-            label="Gate Load"
-            value={stats?.activeVehicles || 0}
-            desc="Active parked vehicles across resident and visitor traffic"
-            tone="info"
-          />
-        </div>
-      </SectionCard>
-      </div>
-
-      <div id="analytics" className="grid grid-cols-1 lg:grid-cols-3 gap-6 scroll-mt-24">
+      {showAnalytics && <div id="analytics" className="grid grid-cols-1 xl:grid-cols-2 gap-6 scroll-mt-24 max-w-7xl">
         <SectionCard
           title="Weekly Traffic"
           description="Entries vs exits"
           actions={
             <Badge variant="outline">
               <TrendingUp className="h-3 w-3 mr-1" />
-              Demo Data
+              Live Data
             </Badge>
           }
         >
@@ -223,10 +277,11 @@ function AdminDashboard() {
             ))}
           </div>
         </SectionCard>
-      </div>
+      </div>}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div id="approvals" className="lg:col-span-3 scroll-mt-24">
+      {(showApprovals || showResidents || showActivity) && <div className="grid grid-cols-1 gap-6 max-w-7xl">
+        {showApprovals && (
+        <div id="approvals" className="scroll-mt-24">
           <SectionCard
             title="Pending Registration Requests"
             description={`${pendingUsers.length} users waiting for approval`}
@@ -245,8 +300,12 @@ function AdminDashboard() {
               <TableBody>
                 {pendingUsers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground">
-                      No pending registration requests
+                    <TableCell colSpan={5}>
+                      <EmptyState
+                        icon={UserCheck}
+                        title="No pending registrations"
+                        description="New resident requests will appear here for admin approval."
+                      />
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -255,7 +314,7 @@ function AdminDashboard() {
                       <TableCell className="font-medium">{user.name}</TableCell>
                       <TableCell>{user.email}</TableCell>
                       <TableCell className="capitalize">{user.role}</TableCell>
-                      <TableCell>{user.flat || "-"}</TableCell>
+                      <TableCell>{formatFlat(user)}</TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-2">
                           <Button
@@ -282,8 +341,10 @@ function AdminDashboard() {
             </Table>
           </SectionCard>
         </div>
+        )}
 
-        <div id="residents" className="lg:col-span-2 scroll-mt-24">
+        {showResidents && (
+        <div id="residents" className="scroll-mt-24">
           <SectionCard
             title="Residents"
             description={`${stats?.residents || 0} residents registered`}
@@ -308,8 +369,12 @@ function AdminDashboard() {
               <TableBody>
                 {residentsData.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground">
-                      No residents found
+                    <TableCell colSpan={6}>
+                      <EmptyState
+                        icon={Users}
+                        title="No approved residents yet"
+                        description="Approved resident accounts will be listed here with flat details."
+                      />
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -320,7 +385,7 @@ function AdminDashboard() {
                       <TableCell className="capitalize">{r.role}</TableCell>
                       <TableCell>{formatFlat(r)}</TableCell>
                       <TableCell>
-                        <Badge>{r.approvalStatus || "approved"}</Badge>
+                        <StatusPill status={r.approvalStatus || "approved"} />
                       </TableCell>
                       <TableCell>
                         <Button size="icon" variant="ghost">
@@ -334,12 +399,18 @@ function AdminDashboard() {
             </Table>
           </SectionCard>
         </div>
+        )}
 
+        {showActivity && (
         <div id="activity" className="scroll-mt-24">
         <SectionCard title="Recent Activity">
           <div className="space-y-3">
             {recentActivity.length === 0 ? (
-              <div className="text-sm text-muted-foreground">No activity found</div>
+              <EmptyState
+                icon={Activity}
+                title="No vehicle activity yet"
+                description="Vehicle entries and exits will create the live activity trail."
+              />
             ) : (
               recentActivity.map((v) => {
                 const status = v.exitTime ? "Out" : "In";
@@ -375,9 +446,10 @@ function AdminDashboard() {
           </div>
         </SectionCard>
         </div>
-      </div>
+        )}
+      </div>}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {currentView === "overview" && <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <AdminTile
           title="Manage Slots"
           desc={`${stats?.availableSlots || 0} available`}
@@ -387,7 +459,7 @@ function AdminDashboard() {
 
         <AdminTile
           title="AI Insights"
-          desc="Demand and usage patterns"
+          desc="Smartworld demand model"
           icon={TrendingUp}
           to="/ai-insights"
         />
@@ -398,7 +470,7 @@ function AdminDashboard() {
           icon={MoreHorizontal}
           to="/settings"
         />
-      </div>
+      </div>}
     </div>
   );
 }
@@ -406,7 +478,36 @@ function AdminDashboard() {
 function formatFlat(resident: any) {
   if (!resident.flat) return "-";
   if (resident.flat.includes("-")) return resident.flat.replace("-", "");
-  return [resident.block, resident.flat].filter(Boolean).join(" ") || resident.flat;
+  return resident.flat;
+}
+
+function buildTrafficData(activity: any[]) {
+  const labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const map = labels.reduce((acc: any, day) => {
+    acc[day] = { day, entries: 0, exits: 0 };
+    return acc;
+  }, {});
+
+  activity.forEach((item) => {
+    const date = new Date(item.entryTime || item.createdAt || item.updatedAt || Date.now());
+    const day = labels[(date.getDay() + 6) % 7];
+    map[day].entries += item.entryTime ? 1 : 0;
+    map[day].exits += item.exitTime ? 1 : 0;
+  });
+
+  return labels.map((day) => map[day]);
+}
+
+function buildSlotMix(stats: any) {
+  const available = stats?.availableSlots || 0;
+  const occupied = stats?.occupiedSlots || 0;
+  const other = Math.max((stats?.totalSlots || 0) - available - occupied, 0);
+
+  return [
+    { name: "Available", value: available, color: "var(--color-chart-2)" },
+    { name: "Occupied", value: occupied, color: "var(--color-chart-1)" },
+    { name: "Reserved / Other", value: other, color: "var(--color-chart-3)" },
+  ].filter((item) => item.value > 0);
 }
 
 function OpsSignal({ icon: Icon, label, value, desc, tone }: any) {
@@ -439,8 +540,8 @@ function AdminTile({ title, desc, icon: Icon, to, tone = "default" }: any) {
   };
 
   return (
-    <Link to={to} className="rounded-xl border p-5 flex items-center gap-4">
-      <div className={`h-11 w-11 rounded-xl grid place-items-center ${map[tone]}`}>
+    <Link to={to} className="rounded-lg border p-5 flex items-center gap-4">
+      <div className={`h-11 w-11 rounded-lg grid place-items-center ${map[tone]}`}>
         <Icon className="h-5 w-5" />
       </div>
 

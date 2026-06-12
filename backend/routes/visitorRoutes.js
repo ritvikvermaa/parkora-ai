@@ -16,6 +16,7 @@ const {
 } = require("../utils/parkingAllocator");
 const { canonicalFlat } = require("../utils/society");
 const { approvedUserFilter } = require("../utils/userStatus");
+const { createNotification } = require("../utils/notifications");
 
 // Create visitor request
 router.post("/request", authMiddleware, roleMiddleware("guard", "admin"), async (req, res) => {
@@ -45,6 +46,17 @@ router.post("/request", authMiddleware, roleMiddleware("guard", "admin"), async 
       purpose,
       createdByRole: req.user.role,
       status: "pending",
+    });
+
+    await createNotification({
+      title: "Visitor approval needed",
+      message: `${visitor.visitorName} is waiting for approval at flat ${canonicalFlat(host.flat, host.block)}.`,
+      type: "warning",
+      category: "visitor",
+      targetUsers: [host._id],
+      targetFlats: [host.flat],
+      link: "/dashboard/requests",
+      metadata: { visitorId: visitor._id, vehicleNumber: visitor.vehicleNumber },
     });
 
     res.status(201).json({
@@ -92,9 +104,9 @@ const exitVisitor = async (req, res) => {
       });
     }
 
-    visitor.status = "exited";
-    visitor.exitTime = new Date();
-    await visitor.save();
+      visitor.status = "exited";
+      visitor.exitTime = new Date();
+      await visitor.save();
 
     if (visitor.slot) {
       const slot = await ParkingSlot.findById(visitor.slot);
@@ -109,6 +121,36 @@ const exitVisitor = async (req, res) => {
       { number: normalizeVehicleNumber(visitor.vehicleNumber), isParked: true },
       { isParked: false, exitTime: new Date() }
     );
+
+    await createNotification({
+      title: "Visitor exited",
+      message: `${visitor.vehicleNumber} has exited and the parking slot was released.`,
+      type: "info",
+      category: "visitor",
+      targetFlats: [visitor.hostFlat],
+      link: "/dashboard/history",
+      metadata: { visitorId: visitor._id, vehicleNumber: visitor.vehicleNumber },
+    });
+
+    await createNotification({
+      title: "Visitor exited",
+      message: `${visitor.vehicleNumber} has exited and the parking slot was released.`,
+      type: "info",
+      category: "visitor",
+      targetRoles: ["guard"],
+      link: "/guard/visitors",
+      metadata: { visitorId: visitor._id, vehicleNumber: visitor.vehicleNumber },
+    });
+
+    await createNotification({
+      title: "Visitor exited",
+      message: `${visitor.vehicleNumber} has exited and the parking slot was released.`,
+      type: "info",
+      category: "visitor",
+      targetRoles: ["admin"],
+      link: "/admin/activity",
+      metadata: { visitorId: visitor._id, vehicleNumber: visitor.vehicleNumber },
+    });
 
     res.status(200).json({
       success: true,
@@ -191,6 +233,26 @@ router.patch(
         visitor.status = "parking_unavailable";
         await visitor.save();
 
+        await createNotification({
+          title: "Parking could not be allotted",
+          message: `${visitor.visitorName} was approved for entry, but no visitor or fallback parking is available.`,
+          type: "warning",
+          category: "parking",
+          targetFlats: [visitor.hostFlat],
+          link: "/dashboard/history",
+          metadata: { visitorId: visitor._id, vehicleNumber: visitor.vehicleNumber },
+        });
+
+        await createNotification({
+          title: "Parking could not be allotted",
+          message: `${visitor.visitorName} was approved for flat ${visitor.hostFlat}, but no visitor or fallback parking is available.`,
+          type: "warning",
+          category: "parking",
+          targetRoles: ["admin"],
+          link: "/admin/activity",
+          metadata: { visitorId: visitor._id, vehicleNumber: visitor.vehicleNumber },
+        });
+
         return res.json({
           success: true,
           parkingUnavailable: true,
@@ -230,6 +292,36 @@ router.patch(
       slot.status = "occupied";
       slot.assignedTo = vehicleNumber;
       await slot.save();
+
+      await createNotification({
+        title: "Visitor parking allocated",
+        message: `${visitor.visitorName} was allotted slot ${slot.slotNumber}.`,
+        type: "success",
+        category: "visitor",
+        targetFlats: [visitor.hostFlat],
+        link: "/dashboard/history",
+        metadata: { visitorId: visitor._id, vehicleNumber },
+      });
+
+      await createNotification({
+        title: "Visitor parking allocated",
+        message: `${visitor.visitorName} was allotted slot ${slot.slotNumber}.`,
+        type: "success",
+        category: "visitor",
+        targetRoles: ["guard"],
+        link: "/guard/visitors",
+        metadata: { visitorId: visitor._id, vehicleNumber },
+      });
+
+      await createNotification({
+        title: "Visitor parking allocated",
+        message: `${visitor.visitorName} was allotted slot ${slot.slotNumber}.`,
+        type: "success",
+        category: "visitor",
+        targetRoles: ["admin"],
+        link: "/admin/activity",
+        metadata: { visitorId: visitor._id, vehicleNumber },
+      });
 
       res.json({
         success: true,
@@ -273,6 +365,36 @@ router.patch(
       }
 
       await visitor.save();
+
+      await createNotification({
+        title: "Visitor request rejected",
+        message: `${visitor.visitorName} was not approved for entry.`,
+        type: "destructive",
+        category: "visitor",
+        targetFlats: [visitor.hostFlat],
+        link: "/dashboard/history",
+        metadata: { visitorId: visitor._id, vehicleNumber: visitor.vehicleNumber },
+      });
+
+      await createNotification({
+        title: "Visitor request rejected",
+        message: `${visitor.visitorName} was not approved for entry.`,
+        type: "destructive",
+        category: "visitor",
+        targetRoles: ["guard"],
+        link: "/guard/visitors",
+        metadata: { visitorId: visitor._id, vehicleNumber: visitor.vehicleNumber },
+      });
+
+      await createNotification({
+        title: "Visitor request rejected",
+        message: `${visitor.visitorName} was not approved for entry.`,
+        type: "destructive",
+        category: "visitor",
+        targetRoles: ["admin"],
+        link: "/admin/activity",
+        metadata: { visitorId: visitor._id, vehicleNumber: visitor.vehicleNumber },
+      });
 
       res.json({
         success: true,

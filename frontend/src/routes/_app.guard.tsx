@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
 import {
@@ -8,13 +8,22 @@ import {
   Car,
   Clock,
   Send,
+  ParkingCircle,
 } from "lucide-react";
 
 import { PageHeader, SectionCard } from "@/components/section";
 import { StatCard } from "@/components/stat-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import {
+  EmptyState,
+  FieldHint,
+  InlineNotice,
+  StatusPill,
+} from "@/components/dashboard-ui";
+import { DashboardNotificationsFeed } from "@/components/notifications";
+import { parseFlatId, SOCIETY_BLOCKS } from "@/lib/society";
 
 import {
   Table,
@@ -24,13 +33,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
 
 import {
   getActiveVehicles,
@@ -49,23 +51,62 @@ export const Route = createFileRoute("/_app/guard")({
 
   component: () => (
     <ProtectedRoute roles={["guard", "admin"]}>
-      <GuardDashboard />
+      <GuardDashboard view="overview" />
     </ProtectedRoute>
   ),
 });
 
-function GuardDashboard() {
+export type GuardView =
+  | "overview"
+  | "entry"
+  | "exit"
+  | "search"
+  | "visitors"
+  | "residents";
+
+const guardViewMeta: Record<GuardView, { title: string; description: string }> = {
+  overview: {
+    title: "Guard Dashboard",
+    description: "Gate operations summary and quick access to guard workflows.",
+  },
+  entry: {
+    title: "Visitor Entry Request",
+    description: "Create flat-specific visitor requests for resident approval.",
+  },
+  exit: {
+    title: "Visitor Exit",
+    description: "Release visitor parking without exposing resident vehicle controls.",
+  },
+  search: {
+    title: "Quick Vehicle Search",
+    description: "Find active vehicles by plate or owner.",
+  },
+  visitors: {
+    title: "Visitor Vehicles",
+    description: "Active visitor vehicles with exit controls.",
+  },
+  residents: {
+    title: "Resident Vehicles",
+    description: "Resident-owned vehicles shown read-only for guards.",
+  },
+};
+
+export function GuardDashboard({ view = "overview" }: { view?: GuardView }) {
   const [query, setQuery] = useState("");
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [availableSlots, setAvailableSlots] = useState<any[]>([]);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState<{
+    tone: "success" | "warning" | "destructive" | "info";
+    title: string;
+    body: string;
+  } | null>(null);
 
   const [entry, setEntry] = useState({
     ownerName: "",
     phone: "",
     vehicleNumber: "",
     vehicleType: "car",
-    block: "Jade",
+    block: "",
     flat: "",
     purpose: "Guest Visit",
   });
@@ -106,6 +147,18 @@ function GuardDashboard() {
   const residentVehicles = vehicles.filter(
     (vehicle) => getVehicleCategory(vehicle) === "resident"
   );
+  const parsedFlat = parseFlatId(entry.flat);
+
+  const handleFlatChange = (value: string) => {
+    const nextFlat = value.toUpperCase();
+    const parsed = parseFlatId(nextFlat);
+
+    setEntry({
+      ...entry,
+      flat: nextFlat,
+      block: parsed.block || entry.block,
+    });
+  };
 
   const handleEntry = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -113,21 +166,29 @@ function GuardDashboard() {
     const data = await vehicleEntry(entry);
 
     if (data.success) {
-      setMessage("Entry request sent to the resident for approval");
+      setMessage({
+        tone: "success",
+        title: "Request sent",
+        body: "The visitor entry request is waiting for resident approval.",
+      });
 
       setEntry({
         ownerName: "",
         phone: "",
         vehicleNumber: "",
         vehicleType: "car",
-        block: "Jade",
+        block: "",
         flat: "",
         purpose: "Guest Visit",
       });
 
       await loadAll();
     } else {
-      setMessage(data.message || data.error || "Entry failed");
+      setMessage({
+        tone: "destructive",
+        title: "Entry request failed",
+        body: data.message || data.error || "Entry failed.",
+      });
     }
   };
 
@@ -137,12 +198,20 @@ function GuardDashboard() {
     const data = await vehicleExit(exitPlate);
 
     if (data.success) {
-      setMessage("Vehicle exit recorded successfully");
+      setMessage({
+        tone: "success",
+        title: "Visitor exit logged",
+        body: "The visitor parking slot has been released.",
+      });
       setExitPlate("");
 
       await loadAll();
     } else {
-      setMessage(data.message || "Exit failed");
+      setMessage({
+        tone: "warning",
+        title: "Exit could not be logged",
+        body: data.message || "Exit failed.",
+      });
     }
   };
 
@@ -150,27 +219,40 @@ function GuardDashboard() {
     const data = await vehicleExit(vehicleNumber);
 
     if (data.success) {
-      setMessage("Vehicle exit recorded successfully");
+      setMessage({
+        tone: "success",
+        title: "Visitor exit logged",
+        body: "The visitor parking slot has been released.",
+      });
       await loadAll();
     } else {
-      setMessage(data.message || "Exit failed");
+      setMessage({
+        tone: "warning",
+        title: "Exit could not be logged",
+        body: data.message || "Exit failed.",
+      });
     }
   };
+  const currentView = guardViewMeta[view] ? view : "overview";
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Guard Dashboard"
-        description="Create flat-specific visitor entry requests and manage active exits."
+        title={guardViewMeta[currentView].title}
+        description={guardViewMeta[currentView].description}
       />
 
       {message && (
-        <div className="rounded-lg border bg-muted/50 px-4 py-3 text-sm">
-          {message}
-        </div>
+        <InlineNotice
+          tone={message.tone}
+          title={message.title}
+          onDismiss={() => setMessage(null)}
+        >
+          {message.body}
+        </InlineNotice>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {currentView === "overview" && <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="Entries Today"
           value={vehicles.length}
@@ -198,99 +280,150 @@ function GuardDashboard() {
           icon={Clock}
           tone="success"
         />
-      </div>
+      </div>}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {currentView === "overview" && (
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_400px] gap-6">
+          <SectionCard title="Guard Pages" description="Open a focused workflow from the sidebar.">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <QuickPage to="/guard/entry" title="Entry Request" desc="Send resident approval requests." />
+              <QuickPage to="/guard/visitors" title="Visitor Vehicles" desc="Manage visitor exits." />
+              <QuickPage to="/guard/search" title="Quick Search" desc="Find active vehicles." />
+            </div>
+          </SectionCard>
+
+          <DashboardNotificationsFeed />
+        </div>
+      )}
+
+      {["entry", "exit", "search"].includes(currentView) && (
+      <div className="grid grid-cols-1 gap-6 max-w-7xl">
+        {currentView === "entry" && (
         <div id="entry-request" className="scroll-mt-24">
         <SectionCard
           title="Visitor Entry Request"
           description="Specify the flat so the resident can approve entry"
+          contentClassName="pt-0"
         >
-          <form className="space-y-3" onSubmit={handleEntry}>
-            <Input
-              placeholder="Visitor Name"
-              value={entry.ownerName}
-              onChange={(e) =>
-                setEntry({ ...entry, ownerName: e.target.value })
-              }
-              required
-            />
+          <form className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4" onSubmit={handleEntry}>
+            <div className="space-y-1.5 md:col-span-2">
+              <Label>Visitor name</Label>
+              <Input
+                placeholder="Enter visitor name"
+                value={entry.ownerName}
+                onChange={(e) =>
+                  setEntry({ ...entry, ownerName: e.target.value })
+                }
+                required
+              />
+            </div>
 
-            <Input
-              placeholder="Phone"
-              value={entry.phone}
-              onChange={(e) =>
-                setEntry({ ...entry, phone: e.target.value })
-              }
-            />
+              <div className="space-y-1.5">
+                <Label>Phone</Label>
+                <Input
+                  placeholder="Enter phone number"
+                  value={entry.phone}
+                  onChange={(e) =>
+                    setEntry({ ...entry, phone: e.target.value })
+                  }
+                />
+              </div>
 
-            <Input
-              placeholder="Vehicle Number"
-              value={entry.vehicleNumber}
-              onChange={(e) =>
-                setEntry({ ...entry, vehicleNumber: e.target.value })
-              }
-              required
-            />
+              <div className="space-y-1.5">
+                <Label>Vehicle number</Label>
+                <Input
+                  placeholder="Enter plate number"
+                  value={entry.vehicleNumber}
+                  onChange={(e) =>
+                    setEntry({ ...entry, vehicleNumber: e.target.value.toUpperCase() })
+                  }
+                  required
+                />
+              </div>
 
-            <Input
-              placeholder="Flat format: tower + flat letter, such as 22A"
-              value={entry.flat}
-              onChange={(e) =>
-                setEntry({ ...entry, flat: e.target.value.toUpperCase() })
-              }
-              required
-            />
+              <div className="space-y-1.5">
+                <Label>Flat ID</Label>
+                <Input
+                  placeholder="Enter flat ID, e.g. N22A"
+                  value={entry.flat}
+                  onChange={(e) => handleFlatChange(e.target.value)}
+                  required
+                />
+              </div>
 
-            <select
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              value={entry.block}
-              onChange={(e) => setEntry({ ...entry, block: e.target.value })}
-            >
-              <option value="Jade">Jade (J)</option>
-              <option value="Topaz">Topaz (T)</option>
-              <option value="Nest">Nest (N)</option>
-              <option value="Opal">Opal (O)</option>
-            </select>
+              <div className="space-y-1.5">
+                <Label>Block</Label>
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={entry.block}
+                  onChange={(e) => setEntry({ ...entry, block: e.target.value })}
+                >
+                  <option value="">Infer from flat ID</option>
+                  {SOCIETY_BLOCKS.map((block) => (
+                    <option key={block.name} value={block.name}>
+                      {block.name} ({block.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-            <select
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              value={entry.vehicleType}
-              onChange={(e) =>
-                setEntry({ ...entry, vehicleType: e.target.value })
-              }
-            >
-              <option value="car">Car</option>
-              <option value="bike">Bike</option>
-              <option value="ev">EV</option>
-              <option value="other">Other</option>
-            </select>
+            <div className="md:col-span-2 xl:col-span-4">
+            <FieldHint>
+              {entry.flat && parsedFlat.isValid
+                ? `${parsedFlat.normalized}: ${parsedFlat.block || entry.block || "block inferred by backend"}, tower ${parsedFlat.tower}, ${parsedFlat.floorLabel}.`
+                : "Resident approval is required. Parking is allocated only after approval."}
+            </FieldHint>
+            </div>
 
-            <Input
-              placeholder="Purpose"
-              value={entry.purpose}
-              onChange={(e) =>
-                setEntry({ ...entry, purpose: e.target.value })
-              }
-            />
+              <div className="space-y-1.5">
+                <Label>Vehicle type</Label>
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={entry.vehicleType}
+                  onChange={(e) =>
+                    setEntry({ ...entry, vehicleType: e.target.value })
+                  }
+                >
+                  <option value="car">Car</option>
+                  <option value="bike">Bike</option>
+                  <option value="ev">EV</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
 
-            <Button type="submit" className="w-full">
+              <div className="space-y-1.5 xl:col-span-2">
+                <Label>Purpose</Label>
+                <Input
+                  placeholder="Enter visit purpose"
+                  value={entry.purpose}
+                  onChange={(e) =>
+                    setEntry({ ...entry, purpose: e.target.value })
+                  }
+                />
+              </div>
+
+            <Button type="submit" className="w-full md:col-span-2 xl:col-span-4">
               <Send className="h-4 w-4 mr-1" />
               Send for Approval
             </Button>
           </form>
         </SectionCard>
         </div>
+        )}
 
+        {currentView === "exit" && (
         <div id="visitor-exit" className="scroll-mt-24">
         <SectionCard title="Visitor Exit" description="Guards can release visitor parking only">
-          <form className="space-y-3" onSubmit={handleExit}>
+          <form className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_280px_auto] gap-4 items-end" onSubmit={handleExit}>
+            <div className="space-y-1.5">
+              <Label>Visitor vehicle number</Label>
             <Input
-              placeholder="Visitor Vehicle Number"
+              placeholder="Enter visitor vehicle number"
               value={exitPlate}
               onChange={(e) => setExitPlate(e.target.value)}
               required
             />
+            </div>
 
             <div className="rounded-lg bg-muted/50 p-3 text-xs space-y-1">
               <div className="flex justify-between">
@@ -311,10 +444,12 @@ function GuardDashboard() {
           </form>
         </SectionCard>
         </div>
+        )}
 
+        {currentView === "search" && (
         <div id="quick-search" className="scroll-mt-24">
         <SectionCard title="Quick Search" description="Find a vehicle by plate or owner">
-          <div className="relative">
+          <div className="relative max-w-2xl">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
 
             <Input
@@ -325,9 +460,15 @@ function GuardDashboard() {
             />
           </div>
 
-          <div className="mt-4 space-y-2 max-h-64 overflow-auto">
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             {filteredActive.length === 0 ? (
-              <EmptyState message="No matching vehicles" />
+              <div className="md:col-span-2 xl:col-span-3">
+              <EmptyState
+                icon={Search}
+                title="No matching vehicles"
+                description="Search by plate number or owner name to find active parking sessions."
+              />
+              </div>
             ) : (
               filteredActive.map((v) => (
                 <div
@@ -339,7 +480,7 @@ function GuardDashboard() {
                       {v.vehicleNumber || v.number}
                     </div>
 
-                    <Badge variant="secondary">{v.vehicleType || v.type}</Badge>
+                    <StatusPill status={v.vehicleType || v.type || "active"} />
                   </div>
 
                   <div className="text-xs text-muted-foreground mt-1">
@@ -351,15 +492,12 @@ function GuardDashboard() {
           </div>
         </SectionCard>
         </div>
+        )}
       </div>
+      )}
 
-      <Tabs defaultValue="active">
-        <TabsList>
-          <TabsTrigger value="visitors">Visitor Vehicles</TabsTrigger>
-          <TabsTrigger value="residents">Resident Vehicles</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="visitors" id="visitor-vehicles" className="mt-4 scroll-mt-24">
+      {currentView === "visitors" && (
+        <div id="visitor-vehicles" className="scroll-mt-24">
           <SectionCard
             title="Active Visitor Vehicles"
             description={`${visitorVehicles.length} visitor vehicles currently parked`}
@@ -377,11 +515,15 @@ function GuardDashboard() {
                   </TableRow>
                 </TableHeader>
 
-                <TableBody>
+                  <TableBody>
                   {visitorVehicles.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground">
-                        No visitor vehicles are currently parked
+                      <TableCell colSpan={6}>
+                        <EmptyState
+                          icon={ParkingCircle}
+                          title="No visitor vehicles parked"
+                          description="Approved visitor vehicles will appear here with guard exit controls."
+                        />
                       </TableCell>
                     </TableRow>
                   ) : visitorVehicles.map((v) => (
@@ -395,7 +537,7 @@ function GuardDashboard() {
                       <TableCell>{v.slot?.slotNumber || "-"}</TableCell>
 
                       <TableCell>
-                        <Badge variant="outline">{v.vehicleType || v.type}</Badge>
+                        <StatusPill status={v.vehicleType || v.type || "visitor"} />
                       </TableCell>
 
                       <TableCell className="text-muted-foreground">
@@ -419,9 +561,11 @@ function GuardDashboard() {
               </Table>
             </div>
           </SectionCard>
-        </TabsContent>
+        </div>
+      )}
 
-        <TabsContent value="residents" id="resident-vehicles" className="mt-4 scroll-mt-24">
+      {currentView === "residents" && (
+        <div id="resident-vehicles" className="scroll-mt-24">
           <SectionCard
             title="Resident Vehicles"
             description={`${residentVehicles.length} resident-owned vehicles currently parked`}
@@ -442,8 +586,12 @@ function GuardDashboard() {
                 <TableBody>
                   {residentVehicles.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground">
-                        No resident vehicles are currently parked
+                      <TableCell colSpan={6}>
+                        <EmptyState
+                          icon={Car}
+                          title="No resident vehicles parked"
+                          description="Resident-owned vehicles are shown read-only for guards."
+                        />
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -459,7 +607,7 @@ function GuardDashboard() {
                           {v.entryTime ? new Date(v.entryTime).toLocaleString() : "-"}
                         </TableCell>
                         <TableCell>
-                          <Badge variant="secondary">Resident managed</Badge>
+                          <StatusPill status="resident managed" />
                         </TableCell>
                       </TableRow>
                     ))
@@ -468,20 +616,17 @@ function GuardDashboard() {
               </Table>
             </div>
           </SectionCard>
-        </TabsContent>
-      </Tabs>
+        </div>
+      )}
     </div>
   );
 }
 
-function EmptyState({ message }: { message: string }) {
+function QuickPage({ to, title, desc }: { to: string; title: string; desc: string }) {
   return (
-    <div className="py-8 text-center text-sm text-muted-foreground">
-      <div className="mx-auto h-10 w-10 rounded-full bg-muted grid place-items-center mb-2">
-        <Search className="h-4 w-4" />
-      </div>
-
-      {message}
-    </div>
+    <Link to={to} className="rounded-lg border bg-card p-4 hover:border-primary hover:shadow-card transition-all">
+      <div className="font-medium">{title}</div>
+      <div className="mt-1 text-xs text-muted-foreground">{desc}</div>
+    </Link>
   );
 }

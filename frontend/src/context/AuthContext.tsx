@@ -8,21 +8,40 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [authLoading, setAuthLoading] = useState(true);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem("user");
-    const savedToken = localStorage.getItem("token");
+    const savedUser =
+      sessionStorage.getItem("user") || localStorage.getItem("user");
+    const savedToken =
+      sessionStorage.getItem("token") || localStorage.getItem("token");
 
     if (savedUser) {
       setUser(JSON.parse(savedUser));
+      sessionStorage.setItem("user", savedUser);
     }
 
     if (savedToken) {
       setToken(savedToken);
+      (globalThis as any).__PARKORA_AUTH_TOKEN__ = savedToken;
+      sessionStorage.setItem("token", savedToken);
     }
 
     setAuthLoading(false);
   }, []);
 
+  useEffect(() => {
+    if (token) {
+      (globalThis as any).__PARKORA_AUTH_TOKEN__ = token;
+      sessionStorage.setItem("token", token);
+    }
+
+    if (user) {
+      sessionStorage.setItem("user", JSON.stringify(user));
+    }
+  }, [token, user]);
+
   const login = (data: any) => {
+    (globalThis as any).__PARKORA_AUTH_TOKEN__ = data.token;
+    sessionStorage.setItem("token", data.token);
+    sessionStorage.setItem("user", JSON.stringify(data.user));
     localStorage.setItem("token", data.token);
     localStorage.setItem("user", JSON.stringify(data.user));
 
@@ -31,6 +50,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const logout = () => {
+    delete (globalThis as any).__PARKORA_AUTH_TOKEN__;
+    sessionStorage.removeItem("token");
+    sessionStorage.removeItem("user");
     localStorage.removeItem("token");
     localStorage.removeItem("user");
 

@@ -1,4 +1,5 @@
 import API from "./api";
+import { getAuthHeaders } from "./authHeaders";
 
 export const getViolations = async () => {
   const res = await fetch(`${API}/api/ai/violations`);
@@ -17,9 +18,7 @@ export const getRecommendation = async (tower:string,floor:string) => {
     {
       method:"POST",
 
-      headers:{
-        "Content-Type":"application/json"
-      },
+      headers: getAuthHeaders(),
 
       body:JSON.stringify({
         tower,
@@ -35,7 +34,8 @@ export const getRecommendation = async (tower:string,floor:string) => {
 export const getSlots = async()=>{
 
 const res = await fetch(
-`${API}/api/slots`
+`${API}/api/slots`,
+{ headers: getAuthHeaders() }
 )
 
 return await res.json()
@@ -45,7 +45,8 @@ return await res.json()
 export const getVehicles = async()=>{
 
 const res = await fetch(
-`${API}/api/vehicles/active`
+`${API}/api/vehicles/active`,
+{ headers: getAuthHeaders() }
 )
 
 return await res.json()
@@ -55,7 +56,8 @@ return await res.json()
 export const getVisitors = async()=>{
 
 const res = await fetch(
-`${API}/api/visitors`
+`${API}/api/visitors`,
+{ headers: getAuthHeaders() }
 )
 
 return await res.json()

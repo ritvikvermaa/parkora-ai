@@ -10,6 +10,7 @@ const authMiddleware = require("../middleware/authMiddleware");
 const roleMiddleware = require("../middleware/roleMiddleware");
 const { approvedUserFilter } = require("../utils/userStatus");
 const { canonicalFlat } = require("../utils/society");
+const { createNotification } = require("../utils/notifications");
 
 router.get(
   "/stats",
@@ -166,6 +167,22 @@ router.patch(
           message: "User not found",
         });
       }
+
+      await createNotification({
+        title:
+          approvalStatus === "approved"
+            ? "Registration approved"
+            : "Registration rejected",
+        message:
+          approvalStatus === "approved"
+            ? "Your Parkora resident account is approved. You can now sign in."
+            : "Your Parkora resident registration request was rejected.",
+        type: approvalStatus === "approved" ? "success" : "destructive",
+        category: "registration",
+        targetUsers: [user._id],
+        link: approvalStatus === "approved" ? "/dashboard" : "/",
+        metadata: { userId: user._id, approvalStatus },
+      });
 
       res.json({
         success: true,

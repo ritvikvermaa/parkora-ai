@@ -11,13 +11,18 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as AppVisitorsRouteImport } from './routes/_app.visitors'
 import { Route as AppSlotsRouteImport } from './routes/_app.slots'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppGuardRouteImport } from './routes/_app.guard'
 import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
 import { Route as AppAiInsightsRouteImport } from './routes/_app.ai-insights'
 import { Route as AppAdminRouteImport } from './routes/_app.admin'
+import { Route as AppSlotsSectionRouteImport } from './routes/_app.slots_.$section'
+import { Route as AppSettingsSectionRouteImport } from './routes/_app.settings_.$section'
+import { Route as AppGuardSectionRouteImport } from './routes/_app.guard_.$section'
+import { Route as AppDashboardSectionRouteImport } from './routes/_app.dashboard_.$section'
+import { Route as AppAiInsightsSectionRouteImport } from './routes/_app.ai-insights_.$section'
+import { Route as AppAdminSectionRouteImport } from './routes/_app.admin_.$section'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -27,11 +32,6 @@ const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
-} as any)
-const AppVisitorsRoute = AppVisitorsRouteImport.update({
-  id: '/visitors',
-  path: '/visitors',
-  getParentRoute: () => AppRoute,
 } as any)
 const AppSlotsRoute = AppSlotsRouteImport.update({
   id: '/slots',
@@ -63,6 +63,36 @@ const AppAdminRoute = AppAdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSlotsSectionRoute = AppSlotsSectionRouteImport.update({
+  id: '/slots_/$section',
+  path: '/slots/$section',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSettingsSectionRoute = AppSettingsSectionRouteImport.update({
+  id: '/settings_/$section',
+  path: '/settings/$section',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppGuardSectionRoute = AppGuardSectionRouteImport.update({
+  id: '/guard_/$section',
+  path: '/guard/$section',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDashboardSectionRoute = AppDashboardSectionRouteImport.update({
+  id: '/dashboard_/$section',
+  path: '/dashboard/$section',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAiInsightsSectionRoute = AppAiInsightsSectionRouteImport.update({
+  id: '/ai-insights_/$section',
+  path: '/ai-insights/$section',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAdminSectionRoute = AppAdminSectionRouteImport.update({
+  id: '/admin_/$section',
+  path: '/admin/$section',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -72,7 +102,12 @@ export interface FileRoutesByFullPath {
   '/guard': typeof AppGuardRoute
   '/settings': typeof AppSettingsRoute
   '/slots': typeof AppSlotsRoute
-  '/visitors': typeof AppVisitorsRoute
+  '/admin/$section': typeof AppAdminSectionRoute
+  '/ai-insights/$section': typeof AppAiInsightsSectionRoute
+  '/dashboard/$section': typeof AppDashboardSectionRoute
+  '/guard/$section': typeof AppGuardSectionRoute
+  '/settings/$section': typeof AppSettingsSectionRoute
+  '/slots/$section': typeof AppSlotsSectionRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -82,7 +117,12 @@ export interface FileRoutesByTo {
   '/guard': typeof AppGuardRoute
   '/settings': typeof AppSettingsRoute
   '/slots': typeof AppSlotsRoute
-  '/visitors': typeof AppVisitorsRoute
+  '/admin/$section': typeof AppAdminSectionRoute
+  '/ai-insights/$section': typeof AppAiInsightsSectionRoute
+  '/dashboard/$section': typeof AppDashboardSectionRoute
+  '/guard/$section': typeof AppGuardSectionRoute
+  '/settings/$section': typeof AppSettingsSectionRoute
+  '/slots/$section': typeof AppSlotsSectionRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -94,7 +134,12 @@ export interface FileRoutesById {
   '/_app/guard': typeof AppGuardRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/slots': typeof AppSlotsRoute
-  '/_app/visitors': typeof AppVisitorsRoute
+  '/_app/admin_/$section': typeof AppAdminSectionRoute
+  '/_app/ai-insights_/$section': typeof AppAiInsightsSectionRoute
+  '/_app/dashboard_/$section': typeof AppDashboardSectionRoute
+  '/_app/guard_/$section': typeof AppGuardSectionRoute
+  '/_app/settings_/$section': typeof AppSettingsSectionRoute
+  '/_app/slots_/$section': typeof AppSlotsSectionRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -106,7 +151,12 @@ export interface FileRouteTypes {
     | '/guard'
     | '/settings'
     | '/slots'
-    | '/visitors'
+    | '/admin/$section'
+    | '/ai-insights/$section'
+    | '/dashboard/$section'
+    | '/guard/$section'
+    | '/settings/$section'
+    | '/slots/$section'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -116,7 +166,12 @@ export interface FileRouteTypes {
     | '/guard'
     | '/settings'
     | '/slots'
-    | '/visitors'
+    | '/admin/$section'
+    | '/ai-insights/$section'
+    | '/dashboard/$section'
+    | '/guard/$section'
+    | '/settings/$section'
+    | '/slots/$section'
   id:
     | '__root__'
     | '/'
@@ -127,7 +182,12 @@ export interface FileRouteTypes {
     | '/_app/guard'
     | '/_app/settings'
     | '/_app/slots'
-    | '/_app/visitors'
+    | '/_app/admin_/$section'
+    | '/_app/ai-insights_/$section'
+    | '/_app/dashboard_/$section'
+    | '/_app/guard_/$section'
+    | '/_app/settings_/$section'
+    | '/_app/slots_/$section'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -150,13 +210,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
-    }
-    '/_app/visitors': {
-      id: '/_app/visitors'
-      path: '/visitors'
-      fullPath: '/visitors'
-      preLoaderRoute: typeof AppVisitorsRouteImport
-      parentRoute: typeof AppRoute
     }
     '/_app/slots': {
       id: '/_app/slots'
@@ -200,6 +253,48 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAdminRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/slots_/$section': {
+      id: '/_app/slots_/$section'
+      path: '/slots/$section'
+      fullPath: '/slots/$section'
+      preLoaderRoute: typeof AppSlotsSectionRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/settings_/$section': {
+      id: '/_app/settings_/$section'
+      path: '/settings/$section'
+      fullPath: '/settings/$section'
+      preLoaderRoute: typeof AppSettingsSectionRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/guard_/$section': {
+      id: '/_app/guard_/$section'
+      path: '/guard/$section'
+      fullPath: '/guard/$section'
+      preLoaderRoute: typeof AppGuardSectionRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/dashboard_/$section': {
+      id: '/_app/dashboard_/$section'
+      path: '/dashboard/$section'
+      fullPath: '/dashboard/$section'
+      preLoaderRoute: typeof AppDashboardSectionRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/ai-insights_/$section': {
+      id: '/_app/ai-insights_/$section'
+      path: '/ai-insights/$section'
+      fullPath: '/ai-insights/$section'
+      preLoaderRoute: typeof AppAiInsightsSectionRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/admin_/$section': {
+      id: '/_app/admin_/$section'
+      path: '/admin/$section'
+      fullPath: '/admin/$section'
+      preLoaderRoute: typeof AppAdminSectionRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -210,7 +305,12 @@ interface AppRouteChildren {
   AppGuardRoute: typeof AppGuardRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppSlotsRoute: typeof AppSlotsRoute
-  AppVisitorsRoute: typeof AppVisitorsRoute
+  AppAdminSectionRoute: typeof AppAdminSectionRoute
+  AppAiInsightsSectionRoute: typeof AppAiInsightsSectionRoute
+  AppDashboardSectionRoute: typeof AppDashboardSectionRoute
+  AppGuardSectionRoute: typeof AppGuardSectionRoute
+  AppSettingsSectionRoute: typeof AppSettingsSectionRoute
+  AppSlotsSectionRoute: typeof AppSlotsSectionRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -220,7 +320,12 @@ const AppRouteChildren: AppRouteChildren = {
   AppGuardRoute: AppGuardRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppSlotsRoute: AppSlotsRoute,
-  AppVisitorsRoute: AppVisitorsRoute,
+  AppAdminSectionRoute: AppAdminSectionRoute,
+  AppAiInsightsSectionRoute: AppAiInsightsSectionRoute,
+  AppDashboardSectionRoute: AppDashboardSectionRoute,
+  AppGuardSectionRoute: AppGuardSectionRoute,
+  AppSettingsSectionRoute: AppSettingsSectionRoute,
+  AppSlotsSectionRoute: AppSlotsSectionRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

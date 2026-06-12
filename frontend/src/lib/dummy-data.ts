@@ -1,13 +1,13 @@
 // Dummy data for the entire Parkora AI app
 export const society = {
-  name: "Greenwood Heights",
-  tagline: "Smart Parking Management",
+  name: "Smartworld Gems",
+  tagline: "Smartworld Gems Parking Operations",
 };
 
 export const currentUser = {
   name: "Aarav Sharma",
   unit: "B-1204",
-  email: "aarav.sharma@greenwood.io",
+  email: "aarav.sharma@smartworldgems.in",
   avatar: "AS",
   role: "Resident",
 };

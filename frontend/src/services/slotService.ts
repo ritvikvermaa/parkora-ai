@@ -1,13 +1,5 @@
 import API from "./api";
-
-const getAuthHeaders = () => {
-  const token = localStorage.getItem("token");
-
-  return {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-  };
-};
+import { getAuthHeaders } from "./authHeaders";
 
 export const getAvailableSlots = async () => {
   const res = await fetch(`${API}/api/slots/guard-available`, {

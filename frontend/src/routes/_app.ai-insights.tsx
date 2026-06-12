@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
   Activity,
@@ -15,6 +15,7 @@ import {
 import ProtectedRoute from "../components/ProtectedRoute";
 import { PageHeader, SectionCard } from "@/components/section";
 import { StatCard } from "@/components/stat-card";
+import { EmptyState, StatusPill } from "@/components/dashboard-ui";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -24,12 +25,37 @@ export const Route = createFileRoute("/_app/ai-insights")({
   head: () => ({ meta: [{ title: "AI Insights - Parkora AI" }] }),
   component: () => (
     <ProtectedRoute roles={["admin"]}>
-      <AIInsights />
+      <AIInsights view="overview" />
     </ProtectedRoute>
   ),
 });
 
-function AIInsights() {
+export type AiView = "overview" | "pressure" | "actions" | "violations" | "counts";
+
+const aiViewMeta: Record<AiView, { title: string; description: string }> = {
+  overview: {
+    title: "AI Insights",
+    description: "ML-assisted pressure forecast and operational alerts.",
+  },
+  pressure: {
+    title: "Parking Pressure Model",
+    description: "Occupancy, visitor velocity, overstay risk and time-of-day weighting.",
+  },
+  actions: {
+    title: "Recommended Actions",
+    description: "Operational suggestions generated from live parking data.",
+  },
+  violations: {
+    title: "Violation Detection",
+    description: "Vehicles and visitors needing attention.",
+  },
+  counts: {
+    title: "AI Counts",
+    description: "Data volume feeding the AI insights dashboard.",
+  },
+};
+
+export function AIInsights({ view = "overview" }: { view?: AiView }) {
   const [dashboard, setDashboard] = useState<any>(null);
   const [violations, setViolations] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -58,12 +84,13 @@ function AIInsights() {
       : model.level === "moderate"
         ? "warning"
         : "success";
+  const currentView = aiViewMeta[view] ? view : "overview";
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="AI Insights"
-        description="ML-assisted pressure forecast and operational alerts"
+        title={aiViewMeta[currentView].title}
+        description={aiViewMeta[currentView].description}
         actions={
           <Button variant="outline" onClick={loadData} disabled={loading}>
             <RefreshCw className="h-4 w-4 mr-1" />
@@ -72,7 +99,7 @@ function AIInsights() {
         }
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {currentView === "overview" && <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="Pressure Score"
           value={model.pressureScore ?? 0}
@@ -96,19 +123,29 @@ function AIInsights() {
           icon={AlertTriangle}
           tone="warning"
         />
-      </div>
+      </div>}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div id="pressure-model" className="lg:col-span-2 scroll-mt-24">
+      {currentView === "overview" && (
+        <SectionCard title="Insight Pages" description="Open a focused AI page from the sidebar.">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <QuickPage to="/ai-insights/pressure" title="Pressure" desc="Forecast parking load." />
+            <QuickPage to="/ai-insights/actions" title="Actions" desc="Operational suggestions." />
+            <QuickPage to="/ai-insights/violations" title="Violations" desc="Review attention items." />
+            <QuickPage to="/ai-insights/counts" title="Counts" desc="Inspect model inputs." />
+          </div>
+        </SectionCard>
+      )}
+
+      {(currentView === "pressure" || currentView === "actions") && (
+      <div className="grid grid-cols-1 gap-6 max-w-7xl">
+        {currentView === "pressure" && (
+        <div id="pressure-model" className="scroll-mt-24">
           <SectionCard
             title="Parking Pressure Model"
             description="Uses occupancy, visitor velocity, overstay risk, and time-of-day weighting"
-            actions={
-              <Badge variant="outline" className="capitalize">
-                <Brain className="h-3 w-3 mr-1" />
-                {model.level || "healthy"}
-              </Badge>
-            }
+          actions={
+              <StatusPill status={model.level || "healthy"} />
+          }
           >
             <div className="space-y-5">
               <div>
@@ -119,7 +156,7 @@ function AIInsights() {
                 <Progress value={model.pressureScore || 0} />
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <Metric
                   label="Slot occupancy"
                   value={`${Math.round((model.occupancyRatio || 0) * 100)}%`}
@@ -137,7 +174,9 @@ function AIInsights() {
             </div>
           </SectionCard>
         </div>
+        )}
 
+        {currentView === "actions" && (
         <div id="actions" className="scroll-mt-24">
         <SectionCard
           title="Recommended Actions"
@@ -145,23 +184,36 @@ function AIInsights() {
           actions={<Sparkles className="h-4 w-4" />}
         >
           <div className="space-y-3">
-            {(model.actions || []).map((action: string, index: number) => (
-              <div key={index} className="rounded-lg border p-3 text-sm">
-                {action}
-              </div>
-            ))}
+            {(model.actions || []).length === 0 ? (
+              <EmptyState
+                icon={Sparkles}
+                title="No urgent recommendations"
+                description="Recommendations appear when the pressure model detects capacity or visitor-flow risk."
+              />
+            ) : (
+              (model.actions || []).map((action: string, index: number) => (
+                <div key={index} className="rounded-lg border p-3 text-sm">
+                  {action}
+                </div>
+              ))
+            )}
           </div>
         </SectionCard>
         </div>
+        )}
       </div>
+      )}
 
+      {currentView === "violations" && (
       <div id="violations" className="scroll-mt-24">
       <SectionCard title="Violation Detection" description="Vehicles and visitors needing attention">
         <div className="space-y-3">
           {violations.length === 0 ? (
-            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-              No violations detected
-            </div>
+            <EmptyState
+              icon={AlertTriangle}
+              title="No violations detected"
+              description="Overstays, mismatched parking usage, and unavailable-parking issues will be listed here."
+            />
           ) : (
             violations.map((violation, index) => (
               <div key={index} className="rounded-lg border p-4">
@@ -182,7 +234,9 @@ function AIInsights() {
         </div>
       </SectionCard>
       </div>
+      )}
 
+      {currentView === "counts" && (
       <div id="ai-counts" className="grid grid-cols-2 lg:grid-cols-4 gap-4 scroll-mt-24">
         <StatCard label="Total Slots" value={counts.slots || 0} icon={Zap} />
         <StatCard
@@ -203,7 +257,17 @@ function AIInsights() {
           tone="info"
         />
       </div>
+      )}
     </div>
+  );
+}
+
+function QuickPage({ to, title, desc }: { to: string; title: string; desc: string }) {
+  return (
+    <Link to={to} className="rounded-lg border bg-card p-4 hover:border-primary hover:shadow-card transition-all">
+      <div className="font-medium">{title}</div>
+      <div className="mt-1 text-xs text-muted-foreground">{desc}</div>
+    </Link>
   );
 }
 

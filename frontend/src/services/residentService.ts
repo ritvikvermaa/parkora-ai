@@ -1,13 +1,5 @@
 import API from "./api";
-
-const getAuthHeaders = () => {
-  const token = localStorage.getItem("token");
-
-  return {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-  };
-};
+import { getAuthHeaders } from "./authHeaders";
 
 export const getResidentDashboard = async () => {
   const res = await fetch(`${API}/api/resident/dashboard`, {
@@ -26,7 +18,12 @@ export const inviteVisitor = async (data: any) => {
     body: JSON.stringify(data),
   });
 
-  return await res.json();
+  const payload = await res.json();
+
+  return {
+    ...payload,
+    statusCode: res.status,
+  };
 };
 
 export const addResidentVehicle = async (data: any) => {

@@ -6,6 +6,7 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/user");
 const { isLegacyApprovedUser } = require("../utils/userStatus");
 const { canonicalFlat } = require("../utils/society");
+const { createNotification } = require("../utils/notifications");
 
 router.post("/register", async (req, res) => {
   try {
@@ -34,6 +35,18 @@ router.post("/register", async (req, res) => {
       block: block || "",
       approvalStatus: finalRole === "admin" ? "approved" : "pending",
     });
+
+    if (user.approvalStatus === "pending") {
+      await createNotification({
+        title: "New registration request",
+        message: `${user.name} requested resident access for flat ${user.flat || "not assigned"}.`,
+        type: "warning",
+        category: "registration",
+        targetRoles: ["admin"],
+        link: "/admin/approvals",
+        metadata: { userId: user._id, flat: user.flat },
+      });
+    }
 
     res.status(201).json({
       success: true,

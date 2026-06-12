@@ -17,6 +17,7 @@ const {
 } = require("../utils/parkingAllocator");
 const { canonicalFlat } = require("../utils/society");
 const { approvedUserFilter } = require("../utils/userStatus");
+const { createNotification } = require("../utils/notifications");
 
 /* ENTRY */
 
@@ -77,6 +78,17 @@ router.post(
         purpose: purpose || "Guard entry approval",
         createdByRole: req.user.role,
         status: "pending",
+      });
+
+      await createNotification({
+        title: "Visitor approval needed",
+        message: `${visitor.visitorName} is waiting for approval at flat ${normalizedFlat}.`,
+        type: "warning",
+        category: "visitor",
+        targetUsers: [host._id],
+        targetFlats: [normalizedFlat],
+        link: "/dashboard/requests",
+        metadata: { visitorId: visitor._id, vehicleNumber: normalizedVehicleNumber },
       });
 
       res.status(201).json({
@@ -239,6 +251,26 @@ router.post(
 
       await slot.save();
 
+      await createNotification({
+        title: "Resident vehicle added",
+        message: `${normalizedVehicleNumber} was added and allotted slot ${slot.slotNumber}.`,
+        type: "success",
+        category: "vehicle",
+        targetFlats: [normalizedFlat],
+        link: "/dashboard/vehicles",
+        metadata: { vehicleId: vehicle._id, vehicleNumber: normalizedVehicleNumber },
+      });
+
+      await createNotification({
+        title: "Resident vehicle added",
+        message: `${normalizedVehicleNumber} was added for flat ${normalizedFlat} and allotted slot ${slot.slotNumber}.`,
+        type: "info",
+        category: "vehicle",
+        targetRoles: ["admin"],
+        link: "/admin/activity",
+        metadata: { vehicleId: vehicle._id, vehicleNumber: normalizedVehicleNumber },
+      });
+
 
       res.status(201).json({
 
@@ -324,6 +356,26 @@ router.delete(
       }
 
       await Vehicle.findByIdAndDelete(vehicle._id);
+
+      await createNotification({
+        title: "Resident vehicle removed",
+        message: `${vehicle.vehicleNumber || vehicle.number} was removed and its slot was released.`,
+        type: "info",
+        category: "vehicle",
+        targetFlats: [vehicle.flat],
+        link: "/dashboard/vehicles",
+        metadata: { vehicleId: vehicle._id, vehicleNumber: vehicle.vehicleNumber || vehicle.number },
+      });
+
+      await createNotification({
+        title: "Resident vehicle removed",
+        message: `${vehicle.vehicleNumber || vehicle.number} was removed from flat ${vehicle.flat || "N/A"}.`,
+        type: "info",
+        category: "vehicle",
+        targetRoles: ["admin"],
+        link: "/admin/activity",
+        metadata: { vehicleId: vehicle._id, vehicleNumber: vehicle.vehicleNumber || vehicle.number },
+      });
 
       res.json({
         success: true,
@@ -431,6 +483,48 @@ router.post(
         await slot.save();
 
       }
+
+      if (vehicleCategory === "visitor") {
+        await createNotification({
+          title: "Visitor exit recorded",
+          message: `${vehicle.vehicleNumber || vehicle.number} exited and slot ${slot?.slotNumber || "N/A"} was released.`,
+          type: "info",
+          category: "visitor",
+          targetFlats: [vehicle.flat],
+          link: "/dashboard/history",
+          metadata: { vehicleId: vehicle._id, vehicleNumber: vehicle.vehicleNumber || vehicle.number },
+        });
+
+        await createNotification({
+          title: "Visitor exit recorded",
+          message: `${vehicle.vehicleNumber || vehicle.number} exited and slot ${slot?.slotNumber || "N/A"} was released.`,
+          type: "info",
+          category: "visitor",
+          targetRoles: ["guard"],
+          link: "/guard/visitors",
+          metadata: { vehicleId: vehicle._id, vehicleNumber: vehicle.vehicleNumber || vehicle.number },
+        });
+      } else {
+        await createNotification({
+          title: "Resident vehicle exit recorded",
+          message: `${vehicle.vehicleNumber || vehicle.number} exited and slot ${slot?.slotNumber || "N/A"} was released.`,
+          type: "info",
+          category: "vehicle",
+          targetFlats: [vehicle.flat],
+          link: "/dashboard/vehicles",
+          metadata: { vehicleId: vehicle._id, vehicleNumber: vehicle.vehicleNumber || vehicle.number },
+        });
+      }
+
+      await createNotification({
+        title: "Vehicle exit recorded",
+        message: `${vehicle.vehicleNumber || vehicle.number} exited and slot ${slot?.slotNumber || "N/A"} was released.`,
+        type: "info",
+        category: "vehicle",
+        targetRoles: ["admin"],
+        link: "/admin/activity",
+        metadata: { vehicleId: vehicle._id, vehicleNumber: vehicle.vehicleNumber || vehicle.number },
+      });
 
       res.json({
 

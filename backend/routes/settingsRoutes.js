@@ -8,9 +8,10 @@ const ParkingSlot = require("../models/parkingSlot");
 const authMiddleware = require("../middleware/authMiddleware");
 const roleMiddleware = require("../middleware/roleMiddleware");
 const { canonicalFlat } = require("../utils/society");
+const { createNotification } = require("../utils/notifications");
 
 const defaultSettings = {
-  societyName: "Greenwood Heights",
+  societyName: "Smartworld Gems",
   visitorSlotLimit: 20,
   visitorFallbackEnabled: true,
   notifications: {
@@ -106,6 +107,16 @@ router.patch(
         { key: "society", value: settings },
         { upsert: true, new: true }
       );
+
+      await createNotification({
+        title: "Society settings updated",
+        message: "Parking and notification rules were updated by admin.",
+        type: "info",
+        category: "settings",
+        targetRoles: ["admin", "guard", "resident"],
+        link: "/settings/society",
+        metadata: { settingsKey: "society" },
+      });
 
       res.json({
         success: true,

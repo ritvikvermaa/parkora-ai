@@ -80,14 +80,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Parkora AI — Smart Parking" },
-      { name: "description", content: "AI-powered parking management for modern societies" },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Parkora AI — Smart Parking" },
-      { property: "og:description", content: "AI-powered parking management for modern societies" },
+      { title: "Parkora AI — Smartworld Gems Parking" },
+      { name: "description", content: "Parking and visitor operations for Smartworld Gems" },
+      { name: "author", content: "Parkora AI" },
+      { property: "og:title", content: "Parkora AI — Smartworld Gems Parking" },
+      { property: "og:description", content: "Parking and visitor operations for Smartworld Gems" },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:site", content: "@ParkoraAI" },
     ],
     links: [
       {

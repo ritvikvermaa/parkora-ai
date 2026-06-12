@@ -15,6 +15,7 @@ const {
   flatAliases,
 } = require("../utils/parkingAllocator");
 const { canonicalFlat } = require("../utils/society");
+const { createNotification } = require("../utils/notifications");
 
 // Resident dashboard data
 router.get(
@@ -84,17 +85,49 @@ router.post(
       const { visitorName, phone, vehicleNumber, purpose } = req.body;
 
       const resident = await User.findById(req.user.id);
+      const normalizedVehicleNumber = normalizeVehicleNumber(vehicleNumber);
 
       const slot = await findVisitorOrUnhandoverResidentSlot(resident.flat);
 
       if (!slot) {
-        return res.status(400).json({
-          success: false,
-          message: "No visitor parking or fallback resident parking available",
+        const visitor = await Visitor.create({
+          visitorName,
+          phone,
+          vehicleNumber: normalizedVehicleNumber,
+          purpose,
+          hostResident: resident.name,
+          hostFlat: normalizeFlat(resident.flat),
+          createdByRole: "resident",
+          status: "parking_unavailable",
+        });
+
+        await createNotification({
+          title: "Visitor invite recorded",
+          message: `${visitor.visitorName} was invited, but parking could not be allotted.`,
+          type: "warning",
+          category: "parking",
+          targetFlats: [resident.flat],
+          link: "/dashboard/history",
+          metadata: { visitorId: visitor._id, vehicleNumber: normalizedVehicleNumber },
+        });
+
+        await createNotification({
+          title: "Visitor parking unavailable",
+          message: `${visitor.visitorName} was invited for flat ${normalizeFlat(resident.flat)}, but no parking could be allotted.`,
+          type: "warning",
+          category: "parking",
+          targetRoles: ["admin"],
+          link: "/admin/activity",
+          metadata: { visitorId: visitor._id, vehicleNumber: normalizedVehicleNumber },
+        });
+
+        return res.status(201).json({
+          success: true,
+          parkingUnavailable: true,
+          message: "Visitor invite recorded, but parking could not be allotted",
+          visitor,
         });
       }
-
-      const normalizedVehicleNumber = normalizeVehicleNumber(vehicleNumber);
 
       const visitor = await Visitor.create({
         visitorName,
@@ -134,6 +167,36 @@ router.post(
         },
         { upsert: true, new: true, setDefaultsOnInsert: true }
       );
+
+      await createNotification({
+        title: "Visitor invite approved",
+        message: `${visitorName} was invited and allotted slot ${slot.slotNumber}.`,
+        type: "success",
+        category: "visitor",
+        targetFlats: [resident.flat],
+        link: "/dashboard/visitors",
+        metadata: { visitorId: visitor._id, vehicleNumber: normalizedVehicleNumber },
+      });
+
+      await createNotification({
+        title: "Resident invited visitor",
+        message: `${visitorName} is approved for flat ${normalizeFlat(resident.flat)} and allotted slot ${slot.slotNumber}.`,
+        type: "info",
+        category: "visitor",
+        targetRoles: ["guard"],
+        link: "/guard/visitors",
+        metadata: { visitorId: visitor._id, vehicleNumber: normalizedVehicleNumber },
+      });
+
+      await createNotification({
+        title: "Resident invited visitor",
+        message: `${visitorName} is approved for flat ${normalizeFlat(resident.flat)} and allotted slot ${slot.slotNumber}.`,
+        type: "info",
+        category: "visitor",
+        targetRoles: ["admin"],
+        link: "/admin/activity",
+        metadata: { visitorId: visitor._id, vehicleNumber: normalizedVehicleNumber },
+      });
 
       res.status(201).json({
         success: true,
@@ -215,6 +278,26 @@ router.post(
       slot.assignedTo = normalizedVehicleNumber;
 
       await slot.save();
+
+      await createNotification({
+        title: "Resident vehicle added",
+        message: `${normalizedVehicleNumber} was added and allotted slot ${slot.slotNumber}.`,
+        type: "success",
+        category: "vehicle",
+        targetFlats: [normalizedFlat],
+        link: "/dashboard/vehicles",
+        metadata: { vehicleId: vehicle._id, vehicleNumber: normalizedVehicleNumber },
+      });
+
+      await createNotification({
+        title: "Resident vehicle added",
+        message: `${normalizedVehicleNumber} was added for flat ${normalizedFlat} and allotted slot ${slot.slotNumber}.`,
+        type: "info",
+        category: "vehicle",
+        targetRoles: ["admin"],
+        link: "/admin/activity",
+        metadata: { vehicleId: vehicle._id, vehicleNumber: normalizedVehicleNumber },
+      });
 
       res.status(201).json({
         success: true,

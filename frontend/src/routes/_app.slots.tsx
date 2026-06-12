@@ -1,12 +1,20 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Search, Filter, Plus, Trash2, Building2 } from "lucide-react";
+import { Search, Filter, Plus, Trash2, Building2, ParkingCircle } from "lucide-react";
 
 import { PageHeader, SectionCard } from "@/components/section";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { useAuth } from "../context/AuthContext";
+import {
+  EmptyState,
+  FieldHint,
+  InlineNotice,
+  StatusPill,
+} from "@/components/dashboard-ui";
 
 import {
   Dialog,
@@ -15,9 +23,20 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 import { getSlots, addSlot, deleteSlot } from "@/services/slotService";
 import { cn } from "@/lib/utils";
+import { parseFlatId, SOCIETY_BLOCKS } from "@/lib/society";
 import ProtectedRoute from "../components/ProtectedRoute";
 
 type SlotStatus = "available" | "occupied" | "reserved" | "visitor";
@@ -42,10 +61,19 @@ export const Route = createFileRoute("/_app/slots")({
   head: () => ({ meta: [{ title: "Parking Slots — Parkora AI" }] }),
   component: () => (
     <ProtectedRoute roles={["admin", "guard"]}>
-      <SlotsPage />
+      <SlotsPage view="overview" />
     </ProtectedRoute>
   ),
 });
+
+export type SlotsView =
+  | "overview"
+  | "summary"
+  | "search"
+  | "jade"
+  | "topaz"
+  | "nest"
+  | "opal";
 
 const statusColor: Record<SlotStatus, string> = {
   available: "bg-success/15 text-success border-success/30 hover:bg-success/25",
@@ -66,7 +94,45 @@ const getDisplayStatus = (slot: ParkingSlot): SlotStatus => {
   return slot.status;
 };
 
-function SlotsPage() {
+const slotsViewMeta: Record<SlotsView, { title: string; description: string }> = {
+  overview: {
+    title: "Parking Slots",
+    description: "Slot inventory summary and parking management actions.",
+  },
+  summary: {
+    title: "Slot Summary",
+    description: "Capacity metrics across resident, visitor and reserved slots.",
+  },
+  search: {
+    title: "Search Parking Slots",
+    description: "Search and filter parking slots across all blocks.",
+  },
+  jade: {
+    title: "Jade Block Parking",
+    description: "Parking inventory for Jade block.",
+  },
+  topaz: {
+    title: "Topaz Block Parking",
+    description: "Parking inventory for Topaz block.",
+  },
+  nest: {
+    title: "Nest Block Parking",
+    description: "Parking inventory for Nest block.",
+  },
+  opal: {
+    title: "Opal Block Parking",
+    description: "Parking inventory for Opal block.",
+  },
+};
+
+const blockViewMap: Partial<Record<SlotsView, ParkingSlot["block"]>> = {
+  jade: "Jade",
+  topaz: "Topaz",
+  nest: "Nest",
+  opal: "Opal",
+};
+
+export function SlotsPage({ view = "overview" }: { view?: SlotsView }) {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
 
@@ -75,8 +141,13 @@ function SlotsPage() {
   const [blockFilter, setBlockFilter] = useState<ParkingSlot["block"] | "all">("all");
   const [query, setQuery] = useState("");
   const [active, setActive] = useState<ParkingSlot | null>(null);
+  const [slotToDelete, setSlotToDelete] = useState<ParkingSlot | null>(null);
   const [openAdd, setOpenAdd] = useState(false);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState<{
+    tone: "success" | "warning" | "destructive" | "info";
+    title: string;
+    body: string;
+  } | null>(null);
 
   const [form, setForm] = useState({
     slotNumber: "",
@@ -92,6 +163,8 @@ function SlotsPage() {
     allowVisitorFallback: true,
   });
 
+  const parsedFlat = parseFlatId(form.flat);
+
   const loadSlots = async () => {
     const data = await getSlots();
     setParkingSlots(data || []);
@@ -101,11 +174,19 @@ function SlotsPage() {
     loadSlots();
   }, []);
 
+  const currentView = slotsViewMeta[view] ? view : "overview";
+  const forcedBlock = blockViewMap[currentView];
+  const effectiveBlockFilter = forcedBlock || blockFilter;
+
   const handleAddSlot = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!isAdmin) {
-      setMessage("Only admins can add parking slots");
+      setMessage({
+        tone: "destructive",
+        title: "Permission required",
+        body: "Only admins can add parking slots.",
+      });
       return;
     }
 
@@ -119,7 +200,11 @@ function SlotsPage() {
     });
 
     if (data.success) {
-      setMessage("Slot added successfully");
+      setMessage({
+        tone: "success",
+        title: "Slot added",
+        body: `${data.slot?.slotNumber || form.slotNumber} is now available in the slot map.`,
+      });
       setOpenAdd(false);
       setForm({
         slotNumber: "",
@@ -136,35 +221,65 @@ function SlotsPage() {
       });
       await loadSlots();
     } else {
-      setMessage(data.message || "Failed to add slot");
+      setMessage({
+        tone: "destructive",
+        title: "Slot could not be added",
+        body: data.message || data.error || "Failed to add slot.",
+      });
     }
   };
 
-  const handleDeleteSlot = async (id: string) => {
+  const handleDeleteSlot = async () => {
+    if (!slotToDelete) return;
+
     if (!isAdmin) {
-      setMessage("Only admins can delete parking slots");
+      setMessage({
+        tone: "destructive",
+        title: "Permission required",
+        body: "Only admins can delete parking slots.",
+      });
       return;
     }
 
-    const confirmDelete = confirm("Remove this slot?");
-    if (!confirmDelete) return;
-
-    const data = await deleteSlot(id);
+    const data = await deleteSlot(slotToDelete._id);
 
     if (data.success) {
-      setMessage("Slot removed successfully");
+      setMessage({
+        tone: "success",
+        title: "Slot removed",
+        body: `${slotToDelete.slotNumber} was removed from active parking inventory.`,
+      });
       setActive(null);
+      setSlotToDelete(null);
       await loadSlots();
     } else {
-      setMessage(data.message || "Failed to remove slot");
+      setMessage({
+        tone: "destructive",
+        title: "Slot could not be removed",
+        body: data.message || data.error || "Failed to remove slot.",
+      });
     }
+  };
+
+  const handleFlatChange = (value: string) => {
+    const nextFlat = value.toUpperCase();
+    const parsed = parseFlatId(nextFlat);
+
+    setForm({
+      ...form,
+      flat: nextFlat,
+      block: parsed.block || form.block,
+      tower: parsed.tower || form.tower,
+      floor: parsed.floor || form.floor,
+      reservedForFlat: form.isReservedForFlat ? nextFlat : form.reservedForFlat,
+    });
   };
 
   const slots = parkingSlots.filter((s) => {
     const displayStatus = getDisplayStatus(s);
 
     if (filter !== "all" && displayStatus !== filter) return false;
-    if (blockFilter !== "all" && s.block !== blockFilter) return false;
+    if (effectiveBlockFilter !== "all" && s.block !== effectiveBlockFilter) return false;
 
     if (
       query &&
@@ -186,12 +301,15 @@ function SlotsPage() {
     occupied: parkingSlots.filter((slot) => slot.status === "occupied").length,
     reserved: parkingSlots.filter((slot) => slot.status === "reserved").length,
   };
+  const showSummary = currentView === "overview" || currentView === "summary";
+  const showFilters = currentView === "search" || Boolean(forcedBlock);
+  const showSlotGrid = currentView === "search" || Boolean(forcedBlock);
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Parking Slots"
-        description="Manage society slots by block, tower and flat"
+        title={slotsViewMeta[currentView].title}
+        description={slotsViewMeta[currentView].description}
         actions={
           isAdmin ? (
             <Button onClick={() => setOpenAdd(true)}>
@@ -203,18 +321,33 @@ function SlotsPage() {
       />
 
       {message && (
-        <div className="rounded-lg border bg-muted/50 px-4 py-3 text-sm">
-          {message}
-        </div>
+        <InlineNotice
+          tone={message.tone}
+          title={message.title}
+          onDismiss={() => setMessage(null)}
+        >
+          {message.body}
+        </InlineNotice>
       )}
 
-      <div id="slot-summary" className="grid grid-cols-2 lg:grid-cols-4 gap-4 scroll-mt-24">
+      {showSummary && <div id="slot-summary" className="grid grid-cols-2 lg:grid-cols-4 gap-4 scroll-mt-24">
         <SummaryCard label="Total Slots" value={slotSummary.total} />
         <SummaryCard label="Available" value={slotSummary.available} tone="success" />
         <SummaryCard label="Occupied" value={slotSummary.occupied} tone="destructive" />
         <SummaryCard label="Reserved" value={slotSummary.reserved} tone="warning" />
-      </div>
+      </div>}
 
+      {currentView === "overview" && (
+        <SectionCard title="Slot Pages" description="Open a focused parking page from the sidebar.">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <QuickPage to="/slots/search" title="Search & Filters" desc="Find slots by flat, block, tower or status." />
+            <QuickPage to="/slots/jade" title="Jade Block" desc="View Jade parking inventory." />
+            <QuickPage to="/slots/nest" title="Nest Block" desc="View Nest parking inventory." />
+          </div>
+        </SectionCard>
+      )}
+
+      {showFilters && (
       <div id="slot-filters" className="scroll-mt-24">
       <SectionCard
         title="Search & Filters"
@@ -257,9 +390,10 @@ function SlotsPage() {
 
         <div className="flex flex-wrap gap-2">
           <Button
-            variant={blockFilter === "all" ? "default" : "outline"}
+            variant={effectiveBlockFilter === "all" ? "default" : "outline"}
             size="sm"
             onClick={() => setBlockFilter("all")}
+            disabled={Boolean(forcedBlock)}
           >
             <Building2 className="h-3 w-3 mr-1" />
             All Blocks
@@ -268,9 +402,10 @@ function SlotsPage() {
           {blocks.map((block) => (
             <Button
               key={block}
-              variant={blockFilter === block ? "default" : "outline"}
+              variant={effectiveBlockFilter === block ? "default" : "outline"}
               size="sm"
               onClick={() => setBlockFilter(block)}
+              disabled={Boolean(forcedBlock)}
             >
               {block}
             </Button>
@@ -279,15 +414,29 @@ function SlotsPage() {
         </div>
       </SectionCard>
       </div>
+      )}
 
+      {showSlotGrid && (
       <div className="space-y-6">
         {groups.length === 0 ? (
           <SectionCard title="No Slots Found">
-            <p className="text-sm text-muted-foreground">
-              {isAdmin
-                ? "Add your first parking slot using the Add Slot button."
-                : "No parking slots are available yet."}
-            </p>
+            <EmptyState
+              icon={ParkingCircle}
+              title="No parking slots match this view"
+              description={
+                isAdmin
+                  ? "Adjust the filters or add a new resident or visitor slot."
+                  : "No parking slots are available for the selected filters."
+              }
+              action={
+                isAdmin ? (
+                  <Button size="sm" onClick={() => setOpenAdd(true)}>
+                    <Plus className="mr-1 h-4 w-4" />
+                    Add Slot
+                  </Button>
+                ) : null
+              }
+            />
           </SectionCard>
         ) : (
           groups.map((group) => (
@@ -335,6 +484,7 @@ function SlotsPage() {
           ))
         )}
       </div>
+      )}
 
       <Dialog
         open={isAdmin ? openAdd : false}
@@ -342,122 +492,168 @@ function SlotsPage() {
           if (isAdmin) setOpenAdd(open);
         }}
       >
-        <DialogContent>
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Add Parking Slot</DialogTitle>
             <DialogDescription>
-              Create resident or visitor parking using block, tower and flat mapping.
+              Create resident or visitor parking. Compact flat IDs can auto-fill block, tower and floor.
             </DialogDescription>
           </DialogHeader>
 
           <form className="space-y-3" onSubmit={handleAddSlot}>
-            <Input
-              placeholder="Slot number format: flat code + parking index, such as N22A-P1"
-              value={form.slotNumber}
-              onChange={(e) => setForm({ ...form, slotNumber: e.target.value })}
-              required
-            />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-1.5 md:col-span-2">
+                <Label>Slot number</Label>
+                <Input
+                  placeholder="Enter slot code, e.g. V-014 or N22A-P1"
+                  value={form.slotNumber}
+                  onChange={(e) => setForm({ ...form, slotNumber: e.target.value.toUpperCase() })}
+                  required
+                />
+              </div>
 
-            <select
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              value={form.block}
-              onChange={(e) => setForm({ ...form, block: e.target.value })}
-              required
-            >
-              <option value="">Select Block</option>
-              <option value="Jade">Jade</option>
-              <option value="Topaz">Topaz</option>
-              <option value="Nest">Nest</option>
-              <option value="Opal">Opal</option>
-            </select>
+              <div className="space-y-1.5">
+                <Label>Flat ID</Label>
+                <Input
+                  placeholder="Enter flat ID, e.g. N22A"
+                  value={form.flat}
+                  onChange={(e) => handleFlatChange(e.target.value)}
+                />
+              </div>
 
-            <Input
-              placeholder="Tower number only, for example 22 or 113"
-              value={form.tower}
-              onChange={(e) => setForm({ ...form, tower: e.target.value })}
-              required
-            />
+              <div className="space-y-1.5">
+                <Label>Block</Label>
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={form.block}
+                  onChange={(e) => setForm({ ...form, block: e.target.value })}
+                  required
+                >
+                  <option value="">Select block</option>
+                  {SOCIETY_BLOCKS.map((block) => (
+                    <option key={block.name} value={block.name}>
+                      {block.name} ({block.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-            <Input
-              placeholder="Flat format: tower + flat letter, or full code such as N22A"
-              value={form.flat}
-              onChange={(e) => setForm({ ...form, flat: e.target.value })}
-            />
+              <div className="space-y-1.5">
+                <Label>Tower</Label>
+                <Input
+                  placeholder="Enter tower number, e.g. 22"
+                  value={form.tower}
+                  onChange={(e) => setForm({ ...form, tower: e.target.value })}
+                  required
+                />
+              </div>
 
-            <Input
-              placeholder="Auto floor: A=1st, B=2nd, C=3rd, D=4th; enter manually for visitor slots"
-              value={form.floor}
-              onChange={(e) => setForm({ ...form, floor: e.target.value })}
-            />
-            {form.flat && (
-              <div className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                {getDerivedFloorText(form.flat)}
+              <div className="space-y-1.5">
+                <Label>Floor</Label>
+                <Input
+                  placeholder="Auto from A/B/C/D, or enter for visitor slots"
+                  value={form.floor}
+                  onChange={(e) => setForm({ ...form, floor: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <FieldHint>
+              {form.flat && parsedFlat.isValid
+                ? `${parsedFlat.normalized} detected: ${parsedFlat.block || form.block || "selected block"}, tower ${parsedFlat.tower}, ${parsedFlat.floorLabel}.`
+                : "Use compact flat IDs. Final letter sets the floor: A=1st, B=2nd, C=3rd, D=4th."}
+            </FieldHint>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Parking type</Label>
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={form.type}
+                  onChange={(e) => setForm({ ...form, type: e.target.value })}
+                >
+                  <option value="resident">Resident parking</option>
+                  <option value="visitor">Visitor parking</option>
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Initial status</Label>
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={form.status}
+                  onChange={(e) => setForm({ ...form, status: e.target.value })}
+                >
+                  <option value="available">Available</option>
+                  <option value="occupied">Occupied</option>
+                  <option value="reserved">Reserved</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="rounded-lg border p-3">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <Label className="text-sm">Reserve for a flat</Label>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Reserved slots stay hidden from guard visitor allocation.
+                  </p>
+                </div>
+                <Switch
+                  checked={form.isReservedForFlat}
+                  onCheckedChange={(checked) =>
+                    setForm({
+                      ...form,
+                      isReservedForFlat: checked,
+                      status: checked ? "reserved" : form.status,
+                      reservedForFlat: checked ? form.flat : "",
+                    })
+                  }
+                />
+              </div>
+            </div>
+
+            {form.isReservedForFlat && (
+              <div className="space-y-1.5">
+                <Label>Reserved flat</Label>
+                <Input
+                  placeholder="Enter reserved flat ID, e.g. N22A"
+                  value={form.reservedForFlat}
+                  onChange={(e) =>
+                    setForm({ ...form, reservedForFlat: e.target.value.toUpperCase() })
+                  }
+                />
               </div>
             )}
 
-            <select
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              value={form.type}
-              onChange={(e) => setForm({ ...form, type: e.target.value })}
-            >
-              <option value="resident">Resident Parking</option>
-              <option value="visitor">Visitor Parking</option>
-            </select>
-
-            <select
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              value={form.status}
-              onChange={(e) => setForm({ ...form, status: e.target.value })}
-            >
-              <option value="available">Available</option>
-              <option value="occupied">Occupied</option>
-              <option value="reserved">Reserved</option>
-            </select>
-
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={form.isReservedForFlat}
-                onChange={(e) =>
+            <div className="rounded-lg border p-3">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <Label className="text-sm">Visitor fallback allowed</Label>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Guards may use this slot only when visitor parking is full and the flat is not handed over.
+                  </p>
+                </div>
+                <Switch
+                  checked={form.allowVisitorFallback}
+                  onCheckedChange={(checked) =>
                   setForm({
                     ...form,
-                    isReservedForFlat: e.target.checked,
-                    reservedForFlat: e.target.checked ? form.flat : "",
+                    allowVisitorFallback: checked,
                   })
-                }
-              />
-              Reserve this parking for a flat
-            </label>
+                  }
+                />
+              </div>
+            </div>
 
-            {form.isReservedForFlat && (
+            <div className="space-y-1.5">
+              <Label>Assigned vehicle or user ID</Label>
               <Input
-                placeholder="Reserved flat format, such as N22A"
-                value={form.reservedForFlat}
-                onChange={(e) =>
-                  setForm({ ...form, reservedForFlat: e.target.value })
-                }
+                placeholder="Optional; leave blank for unassigned slots"
+                value={form.assignedTo}
+                onChange={(e) => setForm({ ...form, assignedTo: e.target.value })}
               />
-            )}
-
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={form.allowVisitorFallback}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    allowVisitorFallback: e.target.checked,
-                  })
-                }
-              />
-              Allow visitor fallback if visitor parking is full
-            </label>
-
-            <Input
-              placeholder="Assigned To optional"
-              value={form.assignedTo}
-              onChange={(e) => setForm({ ...form, assignedTo: e.target.value })}
-            />
+            </div>
 
             <Button type="submit" className="w-full">
               Add Slot
@@ -473,9 +669,7 @@ function SlotsPage() {
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   Slot {active.slotNumber}
-                  <Badge className={cn("border-0", statusColor[getDisplayStatus(active)])}>
-                    {getDisplayStatus(active)}
-                  </Badge>
+                  <StatusPill status={getDisplayStatus(active)} />
                 </DialogTitle>
                 <DialogDescription>
                   {active.block} · Tower {active.tower} · Floor {active.floor}
@@ -499,7 +693,7 @@ function SlotsPage() {
               {isAdmin && (
                 <Button
                   variant="destructive"
-                  onClick={() => handleDeleteSlot(active._id)}
+                  onClick={() => setSlotToDelete(active)}
                 >
                   <Trash2 className="h-4 w-4 mr-1" />
                   Remove Slot
@@ -509,6 +703,28 @@ function SlotsPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!slotToDelete} onOpenChange={(open) => !open && setSlotToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove parking slot?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {slotToDelete
+                ? `${slotToDelete.slotNumber} will be removed from the active parking inventory. Existing history stays intact.`
+                : "This slot will be removed from active parking inventory."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleDeleteSlot}
+            >
+              Remove Slot
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -565,16 +781,11 @@ function BlockMetric({ label, value }: { label: string; value: number }) {
   );
 }
 
-function getDerivedFloorText(flat: string) {
-  const letter = flat.trim().toUpperCase().match(/[A-Z]$/)?.[0];
-  const map: Record<string, string> = {
-    A: "1st floor",
-    B: "2nd floor",
-    C: "3rd floor",
-    D: "4th floor",
-  };
-
-  return map[letter]
-    ? `Detected ${letter} flat: this slot will be saved as ${map[letter]}.`
-    : "Floor is derived from final flat letter when possible: A=1st, B=2nd, C=3rd, D=4th.";
+function QuickPage({ to, title, desc }: { to: string; title: string; desc: string }) {
+  return (
+    <Link to={to} className="rounded-lg border bg-card p-4 hover:border-primary hover:shadow-card transition-all">
+      <div className="font-medium">{title}</div>
+      <div className="mt-1 text-xs text-muted-foreground">{desc}</div>
+    </Link>
+  );
 }

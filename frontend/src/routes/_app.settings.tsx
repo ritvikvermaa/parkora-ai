@@ -1,7 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Sun, Moon, Bell, User, Building2, Shield } from "lucide-react";
 import { PageHeader, SectionCard } from "@/components/section";
+import { InlineNotice } from "@/components/dashboard-ui";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,17 +17,43 @@ import {
   updateProfile,
   updateSocietySettings,
 } from "@/services/settingsService";
+import { getAuthToken } from "@/services/authHeaders";
 
 export const Route = createFileRoute("/_app/settings")({
   head: () => ({ meta: [{ title: "Settings - Parkora AI" }] }),
   component: () => (
     <ProtectedRoute roles={["admin", "guard", "resident"]}>
-      <SettingsPage />
+      <SettingsPage view="overview" />
     </ProtectedRoute>
   ),
 });
 
-function SettingsPage() {
+export type SettingsView = "overview" | "profile" | "appearance" | "notifications" | "society";
+
+const settingsViewMeta: Record<SettingsView, { title: string; description: string }> = {
+  overview: {
+    title: "Settings",
+    description: "Open a focused settings page from the sidebar.",
+  },
+  profile: {
+    title: "Profile Settings",
+    description: "Manage your account information.",
+  },
+  appearance: {
+    title: "Appearance Settings",
+    description: "Choose your dashboard theme.",
+  },
+  notifications: {
+    title: "Notification Settings",
+    description: "Choose what you want to hear about.",
+  },
+  society: {
+    title: "Society Settings",
+    description: "Admin-controlled society and parking rules.",
+  },
+};
+
+export function SettingsPage({ view = "overview" }: { view?: SettingsView }) {
   const { theme, setTheme } = useTheme();
   const { user: authUser, login, logout } = useAuth();
 
@@ -36,7 +63,7 @@ function SettingsPage() {
     email: "",
     phone: "",
     flat: "",
-    block: "Jade",
+    block: "",
     role: "",
   });
   const [society, setSociety] = useState({
@@ -68,7 +95,7 @@ function SettingsPage() {
         email: data.user?.email || "",
         phone: data.user?.phone || "",
         flat: data.user?.flat || "",
-        block: data.user?.block || "Jade",
+        block: data.user?.block || "",
         role: data.user?.role || "",
       });
       setSociety(data.settings);
@@ -80,7 +107,7 @@ function SettingsPage() {
 
     if (data.success) {
       setMessage("Profile saved");
-      login({ token: localStorage.getItem("token"), user: data.user });
+      login({ token: getAuthToken(), user: data.user });
     } else {
       setMessage(data.message || "Profile update failed");
     }
@@ -111,21 +138,36 @@ function SettingsPage() {
       },
     });
   };
+  const currentView = settingsViewMeta[view] ? view : "overview";
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 max-w-7xl">
       <PageHeader
-        title="Settings"
-        description="Manage your profile, appearance, and society preferences."
+        title={settingsViewMeta[currentView].title}
+        description={settingsViewMeta[currentView].description}
       />
 
       {message && (
-        <div className="rounded-lg border bg-muted/50 px-4 py-3 text-sm">
+        <InlineNotice
+          tone={message.toLowerCase().includes("failed") ? "destructive" : "success"}
+          onDismiss={() => setMessage("")}
+        >
           {message}
-        </div>
+        </InlineNotice>
       )}
 
-      <div id="profile" className="scroll-mt-24">
+      {currentView === "overview" && (
+        <SectionCard title="Settings Pages" description="Use these pages to manage one category at a time.">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <QuickPage to="/settings/profile" title="Profile" desc="Name, phone and flat ID." />
+            <QuickPage to="/settings/appearance" title="Appearance" desc="Theme and display preferences." />
+            <QuickPage to="/settings/notifications" title="Notifications" desc="Visitor and security alerts." />
+            <QuickPage to="/settings/society" title="Society" desc="Parking rules and fallback behavior." />
+          </div>
+        </SectionCard>
+      )}
+
+      {currentView === "profile" && <div id="profile" className="scroll-mt-24">
       <SectionCard title="Profile" description="Your account information">
         <div className="flex items-center gap-4 mb-4">
           <div className="h-16 w-16 rounded-full bg-primary text-primary-foreground grid place-items-center text-xl font-semibold">
@@ -139,7 +181,7 @@ function SettingsPage() {
           </div>
         </div>
         <Separator className="my-4" />
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           <Field
             label="Full Name"
             value={profile.name}
@@ -148,11 +190,13 @@ function SettingsPage() {
           <Field label="Email" value={profile.email} disabled />
           <Field
             label="Phone"
+            placeholder="Enter phone number"
             value={profile.phone}
             onChange={(value) => setProfile({ ...profile, phone: value })}
           />
           <Field
-            label="Flat"
+            label="Flat ID"
+            placeholder="Enter flat ID, e.g. N22A"
             value={profile.flat}
             onChange={(value) =>
               setProfile({ ...profile, flat: value.toUpperCase() })
@@ -163,11 +207,11 @@ function SettingsPage() {
           <Button onClick={saveProfile}>Save changes</Button>
         </div>
       </SectionCard>
-      </div>
+      </div>}
 
-      <div id="appearance" className="scroll-mt-24">
+      {currentView === "appearance" && <div id="appearance" className="scroll-mt-24">
       <SectionCard title="Appearance" description="Theme and display preferences">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
           <ThemeCard
             active={theme === "light"}
             onClick={() => setTheme("light")}
@@ -182,9 +226,9 @@ function SettingsPage() {
           />
         </div>
       </SectionCard>
-      </div>
+      </div>}
 
-      <div id="notifications" className="scroll-mt-24">
+      {currentView === "notifications" && <div id="notifications" className="scroll-mt-24">
       <SectionCard title="Notifications" description="Choose what you want to hear about">
         <div className="space-y-1">
           <Toggle
@@ -232,11 +276,11 @@ function SettingsPage() {
           </div>
         )}
       </SectionCard>
-      </div>
+      </div>}
 
-      <div id="society" className="scroll-mt-24">
+      {currentView === "society" && <div id="society" className="scroll-mt-24">
       <SectionCard title="Society" description="Admin-controlled society settings">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           <Field
             label="Society Name"
             value={society.societyName}
@@ -275,7 +319,7 @@ function SettingsPage() {
           </div>
         )}
       </SectionCard>
-      </div>
+      </div>}
 
       <div className="flex justify-between items-center p-4 rounded-lg border border-destructive/30 bg-destructive/5">
         <div>
@@ -292,16 +336,27 @@ function SettingsPage() {
   );
 }
 
+function QuickPage({ to, title, desc }: { to: string; title: string; desc: string }) {
+  return (
+    <Link to={to} className="rounded-lg border bg-card p-4 hover:border-primary hover:shadow-card transition-all">
+      <div className="font-medium">{title}</div>
+      <div className="mt-1 text-xs text-muted-foreground">{desc}</div>
+    </Link>
+  );
+}
+
 function Field({
   label,
   value,
   onChange,
   disabled,
+  placeholder,
 }: {
   label: string;
   value: string;
   onChange?: (value: string) => void;
   disabled?: boolean;
+  placeholder?: string;
 }) {
   return (
     <div className="space-y-1.5">
@@ -309,6 +364,7 @@ function Field({
       <Input
         value={value}
         disabled={disabled}
+        placeholder={placeholder}
         onChange={(event) => onChange?.(event.target.value)}
       />
     </div>
